@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -609,7 +609,7 @@ NBNetBuilder::compute(OptionsCont& oc, const std::set<std::string>& explicitTurn
     }
     if (myEdgeCont.getNumEdgeSplits() > 0 && !oc.getBool("no-internal-links")) {
         // edges with custom lengths were split, this has to take into account
-        // internal edge lengts (after geometry computation)
+        // internal edge lengths (after geometry computation)
         myEdgeCont.fixSplitCustomLength();
     }
     // recheck phases for large junctions

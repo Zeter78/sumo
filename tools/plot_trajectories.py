@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-# Copyright (C) 2007-2023 German Aerospace Center (DLR) and others.
+# Copyright (C) 2007-2024 German Aerospace Center (DLR) and others.
 # This program and the accompanying materials are made available under the
 # terms of the Eclipse Public License 2.0 which is available at
 # https://www.eclipse.org/legal/epl-2.0/
@@ -86,11 +86,9 @@ def getOptions(args=None):
     optParser.add_option("--legend", category="processing", action="store_true", default=False, help="Add legend")
     optParser.add_option("-v", "--verbose", category="processing", action="store_true",
                          default=False, help="tell me what you are doing")
+    optParser.add_option("fcdfiles", nargs="+", category="input", type=ArgumentParser.file, help="FCD input file(s)")
 
     options, args = optParser.parse_known_args(args=args)
-    if len(args) < 1:
-        sys.exit("mandatory argument FCD_FILE missing")
-    options.fcdfiles = args
 
     # keep old presets from before integration of common options
     options.nolegend = not options.legend

@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -4462,11 +4462,14 @@ NBEdge::addRestrictedLane(double width, SUMOVehicleClass vclass) {
     if (myLaneSpreadFunction == LaneSpreadFunction::CENTER) {
         myGeom.move2side(width / 2);
     }
-    // disallow pedestrians on all lanes to ensure that sidewalks are used and
-    // crossings can be guessed
+    // disallow the designated vclass on all "old" lanes
     disallowVehicleClass(-1, vclass);
     // don't create a restricted vehicle lane to the right of a sidewalk
     const int newIndex = (vclass != SVC_PEDESTRIAN && myLanes[0].permissions == SVC_PEDESTRIAN) ? 1 : 0;
+    if (newIndex == 0) {
+        // disallow pedestrians on all "higher" lanes to ensure that sidewalk remains the rightmost lane
+        disallowVehicleClass(-1, SVC_PEDESTRIAN);
+    }
     // add new lane
     myLanes.insert(myLanes.begin() + newIndex, Lane(this, myLanes[0].getParameter(SUMO_PARAM_ORIGID)));
     myLanes[newIndex].permissions = vclass;

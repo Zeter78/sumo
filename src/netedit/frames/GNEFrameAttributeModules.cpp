@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -486,8 +486,8 @@ GNEFrameAttributeModules::AttributesEditorRow::mergeJunction(SumoXMLAttr attr, c
         // iterate over network junction
         for (const auto& junction : myAttributesEditorParent->getFrameParent()->getViewNet()->getNet()->getAttributeCarriers()->getJunctions()) {
             // check distance position
-            if ((junction.second->getPositionInView().distanceTo2D(newPosition) < POSITION_EPS) &&
-                    myAttributesEditorParent->getFrameParent()->getViewNet()->mergeJunctions(movedJunction, junction.second)) {
+            if ((junction.second.second->getPositionInView().distanceTo2D(newPosition) < POSITION_EPS) &&
+                    myAttributesEditorParent->getFrameParent()->getViewNet()->mergeJunctions(movedJunction, junction.second.second)) {
                 return true;
             }
         }
@@ -730,14 +730,14 @@ GNEFrameAttributeModules::AttributesEditorRow::fillComboBox(const std::string& v
         // fill comboBox with all vTypes and vType distributions sorted by ID
         std::map<std::string, GNEDemandElement*> sortedTypes;
         for (const auto& type : ACs->getDemandElements().at(SUMO_TAG_VTYPE)) {
-            sortedTypes[type->getID()] = type;
+            sortedTypes[type.second->getID()] = type.second;
         }
         for (const auto& sortedType : sortedTypes) {
             myValueComboBox->appendIconItem(sortedType.first.c_str(), sortedType.second->getACIcon());
         }
         sortedTypes.clear();
         for (const auto& typeDistribution : ACs->getDemandElements().at(SUMO_TAG_VTYPE_DISTRIBUTION)) {
-            sortedTypes[typeDistribution->getID()] = typeDistribution;
+            sortedTypes[typeDistribution.second->getID()] = typeDistribution.second;
         }
         for (const auto& sortedType : sortedTypes) {
             myValueComboBox->appendIconItem(sortedType.first.c_str(), sortedType.second->getACIcon());

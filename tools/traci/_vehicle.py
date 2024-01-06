@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-# Copyright (C) 2011-2023 German Aerospace Center (DLR) and others.
+# Copyright (C) 2011-2024 German Aerospace Center (DLR) and others.
 # This program and the accompanying materials are made available under the
 # terms of the Eclipse Public License 2.0 which is available at
 # https://www.eclipse.org/legal/epl-2.0/
@@ -618,7 +618,7 @@ class VehicleDomain(VTypeDomain):
         """
         return self._getUniversal(tc.VAR_BEST_LANES, vehID)
 
-    def getLeader(self, vehID, dist=0.):
+    def getLeader(self, vehID, dist=100.):
         """getLeader(string, double) -> (string, double)
 
         Return the leading vehicle id together with the distance. The distance

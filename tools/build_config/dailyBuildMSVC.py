@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-# Copyright (C) 2008-2023 German Aerospace Center (DLR) and others.
+# Copyright (C) 2008-2024 German Aerospace Center (DLR) and others.
 # This program and the accompanying materials are made available under the
 # terms of the Eclipse Public License 2.0 which is available at
 # https://www.eclipse.org/legal/epl-2.0/
@@ -31,9 +31,11 @@ import glob
 import zipfile
 import shutil
 import sys
+import build
 
 import status
 import wix
+from version import filter_setup_py
 
 env = os.environ
 if "SUMO_HOME" not in env:
@@ -178,6 +180,15 @@ def main(options, platform="x64"):
         shutil.copy(gameZip, options.remoteDir)
     except Exception as e:
         status.printLog("Warning: Could not create nightly sumo-game.zip! (%s)" % e)
+
+    if options.suffix == "extra":
+        shutil.copy(os.path.join(SUMO_HOME, "build_config", "pyproject.toml"),
+                    os.path.join(SUMO_HOME, "pyproject.toml"))
+        filter_setup_py(os.path.join(SUMO_HOME, "build_config", "setup-sumo.py"), os.path.join(SUMO_HOME, "setup.py"))
+        build.ProjectBuilder(SUMO_HOME).build("wheel", {"--plat-name": "win_amd64"})
+        f = glob.glob(os.path.join(SUMO_HOME, "dist", "eclipse_sumo-*"))[0]
+        shutil.copy(f, os.path.join(options.remoteDir, "wheels",
+                                    os.path.basename(f).replace("cp38-cp38", "py2.py3-none")))
 
     debug_handler = status.set_rotating_log(makeAllLog, log_handler)
     ret = status.log_subprocess(["cmake", "--build", ".", "--config", "Debug"], cwd=buildDir)

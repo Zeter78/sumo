@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2017-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2017-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -281,7 +281,14 @@ Person::getStage(const std::string& personID, int nextStageIndex) {
     result.departPos = INVALID_DOUBLE_VALUE;
     result.cost = INVALID_DOUBLE_VALUE;
     result.depart = stage->getDeparted() >= 0 ? STEPS2TIME(stage->getDeparted()) : INVALID_DOUBLE_VALUE;
-    result.travelTime = stage->getArrived() >= 0 ? STEPS2TIME(stage->getArrived() - stage->getDeparted()) : INVALID_DOUBLE_VALUE;
+    result.travelTime = INVALID_DOUBLE_VALUE;
+    if (stage->getArrived() >= 0) {
+        result.travelTime = STEPS2TIME(stage->getArrived() - stage->getDeparted());
+    }
+    else if (stage->getDeparted() >= 0) {
+        result.travelTime = STEPS2TIME(SIMSTEP - stage->getDeparted());
+    }
+
     // Some stage type dependant attributes
     switch (stage->getStageType()) {
         case MSStageType::DRIVING: {

@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -124,7 +124,7 @@ public:
         /// @brief move forward and return whether the person arrived
         bool moveToNextEdge(MSTransportable* person, SUMOTime currentTime, int prevDir, MSEdge* nextInternal = nullptr);
 
-        void activateEntryReminders(MSTransportable* person);
+        void activateEntryReminders(MSTransportable* person, const bool isDepart=false);
 
         void activateLeaveReminders(MSTransportable* person, const MSLane* lane, double lastPos, SUMOTime t, bool arrived);
 
@@ -140,6 +140,11 @@ public:
             return myRouteStep == myRoute.end() - 1 ? nullptr : *(myRouteStep + 1);
         }
         //@}
+
+        /// @brief Whether the transportable is walking
+        bool isWalk() const {
+            return true;
+        }
 
     private:
         /// @brief compute total walking distance
@@ -164,6 +169,8 @@ public:
 
         /// @brief distance walked on non-normal edges (i.e. walkingareas)
         double myInternalDistance;
+
+        static bool myWarnedInvalidTripinfo;
 
     private:
         /// @brief Invalidated copy constructor.
@@ -279,7 +286,7 @@ public:
     bool isJammed() const;
 
     /// @brief set new walk and replace the stages with relative indices in the interval [firstIndex, nextIndex[
-    void reroute(ConstMSEdgeVector& newEdges, double departPos, int firstIndex, int nextIndex);
+    void reroute(const ConstMSEdgeVector& newEdges, double departPos, int firstIndex, int nextIndex);
 
 
     /** @class Influencer

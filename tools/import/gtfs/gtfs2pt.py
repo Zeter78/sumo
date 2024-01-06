@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-# Copyright (C) 2010-2023 German Aerospace Center (DLR) and others.
+# Copyright (C) 2010-2024 German Aerospace Center (DLR) and others.
 # This program and the accompanying materials are made available under the
 # terms of the Eclipse Public License 2.0 which is available at
 # https://www.eclipse.org/legal/epl-2.0/
@@ -198,7 +198,7 @@ def mapFCD(options, typedNets):
         subprocess.call(call, shell=True)
 
 
-def traceMap(options, typedNets, fixedStops, invEdgeMap, radius=100):
+def traceMap(options, typedNets, fixedStops, invEdgeMap, radius=150):
     routes = collections.OrderedDict()
     for mode in sorted(typedNets.keys()):
         if options.verbose:
@@ -220,7 +220,9 @@ def traceMap(options, typedNets, fixedStops, invEdgeMap, radius=100):
                     fixed = fixedStops.get("%s.%s" % (tid, idx))
                     if fixed:
                         vias[idx] = invEdgeMap[fixed.lane[:fixed.lane.rfind("_")]]
-                mappedRoute = sumolib.route.mapTrace(trace, net, radius, fillGaps=options.fill_gaps, vias=vias)
+                mappedRoute = sumolib.route.mapTrace(trace, net, radius, verbose=options.verbose,
+                                                     fillGaps=options.fill_gaps, gapPenalty=5000., vias=vias,
+                                                     reversalPenalty=1000.)
                 if mappedRoute:
                     routes[tid] = [e.getID() for e in mappedRoute]
         if options.verbose:

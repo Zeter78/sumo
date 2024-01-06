@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -306,8 +306,6 @@ GUISUMOAbstractView::paintGL() {
     if (getTrackedID() != GUIGlObject::INVALID_ID) {
         centerTo(getTrackedID(), false);
     }
-    // get id tooltip
-    const GUIGlID idToolTip = getObjectUnderCursor();
     // draw
     glClearColor(
         myVisualizationSettings->backgroundColor.red() / 255.f,
@@ -337,7 +335,7 @@ GUISUMOAbstractView::paintGL() {
     }
     // check if show tooltip
     if (myGlChildWindowParent->getGUIMainWindowParent()->getStaticTooltipView()->isStaticToolTipEnabled()) {
-        showToolTipFor(idToolTip);
+        showToolTipFor(getToolTipID());
     } else {
         myGlChildWindowParent->getGUIMainWindowParent()->getStaticTooltipView()->hideStaticToolTip();
     }
@@ -382,6 +380,12 @@ GUISUMOAbstractView::getLaneUnderCursor() {
 
 
 GUIGlID
+GUISUMOAbstractView::getToolTipID() {
+    return getObjectUnderCursor();
+}
+
+
+GUIGlID
 GUISUMOAbstractView::getObjectUnderCursor() {
     return getObjectAtPosition(getPositionInformation());
 }
@@ -391,6 +395,7 @@ std::vector<GUIGlID>
 GUISUMOAbstractView::getObjectsUnderCursor() {
     return getObjectsAtPosition(getPositionInformation(), SENSITIVITY);
 }
+
 
 
 std::vector<GUIGlObject*>
@@ -411,7 +416,7 @@ GUISUMOAbstractView::getObjectAtPosition(Position pos) {
     Boundary positionBoundary;
     positionBoundary.add(pos);
     positionBoundary.grow(SENSITIVITY);
-    const std::vector<GUIGlID> ids = getObjectsInBoundary(positionBoundary, true);
+    const std::vector<GUIGlID> ids = getObjectsInBoundary(positionBoundary);
     // Interpret results
     int idMax = 0;
     double maxLayer = -std::numeric_limits<double>::max();
@@ -450,7 +455,7 @@ GUISUMOAbstractView::getObjectsAtPosition(Position pos, double radius) {
     selection.add(pos);
     selection.grow(radius);
     // obtain GUIGlID of objects in boundary
-    const std::vector<GUIGlID> ids = getObjectsInBoundary(selection, true);
+    const std::vector<GUIGlID> ids = getObjectsInBoundary(selection);
     // iterate over obtained GUIGlIDs
     for (const auto& i : ids) {
         // obtain GUIGlObject
@@ -485,7 +490,7 @@ GUISUMOAbstractView::getGUIGlObjectsAtPosition(Position pos, double radius) {
     selection.add(pos);
     selection.grow(radius);
     // obtain GUIGlID of objects in boundary
-    const std::vector<GUIGlID> ids = getObjectsInBoundary(selection, true);
+    const std::vector<GUIGlID> ids = getObjectsInBoundary(selection);
     // iterate over obtained GUIGlIDs
     for (const auto& i : ids) {
         // obtain GUIGlObject
@@ -507,7 +512,7 @@ GUISUMOAbstractView::getGUIGlObjectsAtPosition(Position pos, double radius) {
 
 
 std::vector<GUIGlID>
-GUISUMOAbstractView::getObjectsInBoundary(Boundary bound, bool singlePosition) {
+GUISUMOAbstractView::getObjectsInBoundary(Boundary bound) {
     const int NB_HITS_MAX = 1024 * 1024;
     // Prepare the selection mode
     static GUIGlID hits[NB_HITS_MAX];
@@ -520,14 +525,9 @@ GUISUMOAbstractView::getObjectsInBoundary(Boundary bound, bool singlePosition) {
     myChanger->setViewport(bound);
     bound = applyGLTransform(false);
     // enable draw for selecting (to draw objects with less details)
-    if (singlePosition) {
-        myVisualizationSettings->drawForPositionSelection = true;
-    } else {
-        myVisualizationSettings->drawForRectangleSelection = true;
-    }
+    myVisualizationSettings->drawForRectangleSelection = true;
     int hits2 = doPaintGL(GL_SELECT, bound);
     // reset flags
-    myVisualizationSettings->drawForPositionSelection = false;
     myVisualizationSettings->drawForRectangleSelection = false;
     // Get the results
     nb_hits = glRenderMode(GL_RENDER);
@@ -592,7 +592,7 @@ GUISUMOAbstractView::showToolTipFor(const GUIGlID idToolTip) {
 
 
 void
-GUISUMOAbstractView::paintGLGrid() {
+GUISUMOAbstractView::paintGLGrid() const {
     // obtain minimum grid
     const double minimumSizeGrid = (myVisualizationSettings->gridXSize < myVisualizationSettings->gridYSize) ? myVisualizationSettings->gridXSize : myVisualizationSettings->gridYSize;
     // Check if the distance is enough to draw grid
@@ -1218,8 +1218,6 @@ GUISUMOAbstractView::openObjectDialogAtCursor(const FXEvent* ev) {
     if (isEnabled() && myAmInitialised && makeCurrent()) {
         // get all objects under cusor
         auto objectsUnderCursor = getGUIGlObjectsUnderCursor();
-        // filter elements by layer
-        objectsUnderCursor = filterGUIGLObjectsByLayer(objectsUnderCursor);
         // filter elements
         std::vector<GUIGlObject*> filteredObjectsUnderCursor;
         std::vector<GUIGlObject*> filteredVehiclesUnderCursor;
@@ -1980,29 +1978,6 @@ GUISUMOAbstractView::LayerObject::LayerObject(GUIGlObject* object) :
 GUIGlObject*
 GUISUMOAbstractView::LayerObject::getGLObject() const {
     return myGLObject;
-}
-
-
-std::vector<GUIGlObject*>
-GUISUMOAbstractView::filterGUIGLObjectsByLayer(const std::vector<GUIGlObject*>& objects) const {
-    // declare map for saving shapes sorted by layer and ID
-    std::set<LayerObject> layerObjects;
-    for (const auto& object : objects) {
-        if ((object->getType() == GLO_POLYGON) || (object->getType() == GLO_POI)) {
-            layerObjects.insert(LayerObject(dynamic_cast<Shape*>(object)->getShapeLayer(), object));
-        } else {
-            layerObjects.insert(LayerObject(object));
-        }
-    }
-    // declare vector for saving object filtered by layer
-    std::vector<GUIGlObject*> objectsFiltered;
-    // insert in objects filtered sorted from bot to top
-    for (const auto& object : layerObjects) {
-        objectsFiltered.push_back(object.getGLObject());
-    }
-    // reverse objets filtered to top from bot
-    std::reverse(objectsFiltered.begin(), objectsFiltered.end());
-    return objectsFiltered;
 }
 
 /****************************************************************************/

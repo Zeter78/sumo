@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -193,7 +193,7 @@ void
 GNEConsecutiveSelector::updateLaneColors() {
     // reset all flags
     for (const auto& edge : myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->getEdges()) {
-        for (const auto& lane : edge.second->getLanes()) {
+        for (const auto& lane : edge.second.second->getLanes()) {
             lane->resetCandidateFlags();
         }
     }
@@ -201,7 +201,7 @@ GNEConsecutiveSelector::updateLaneColors() {
     if (myLanePath.size() > 0 && (myShowCandidateLanes->getCheck() == TRUE)) {
         // first mark all lanes as invalid
         for (const auto& edge : myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->getEdges()) {
-            for (const auto& lane : edge.second->getLanes()) {
+            for (const auto& lane : edge.second.second->getLanes()) {
                 lane->setConflictedCandidate(true);
             }
         }
@@ -232,7 +232,7 @@ GNEConsecutiveSelector::updateLaneColors() {
 
 
 void
-GNEConsecutiveSelector::drawTemporalConsecutiveLanePath(const GUIVisualizationSettings& s) const {
+GNEConsecutiveSelector::drawTemporalConsecutiveLanePath() const {
     // Only draw if there is at least one lane
     if (myLanePath.size() > 0) {
         // get widths
@@ -289,14 +289,16 @@ GNEConsecutiveSelector::drawTemporalConsecutiveLanePath(const GUIVisualizationSe
             // Pop matrix
             GLHelper::popMatrix();
         }
+    /*
         // draw points
         const RGBColor pointColor = RGBColor::RED;
         // positions
         const Position firstPosition = myLanePath.front().first->getLaneShape().positionAtOffset2D(myLanePath.front().second);
         const Position secondPosition = myLanePath.back().first->getLaneShape().positionAtOffset2D(myLanePath.back().second);
         // draw geometry points
-        GUIGeometry::drawGeometryPoints(s, myFrameParent->getViewNet()->getPositionInformation(), {firstPosition, secondPosition},
+        GUIGeometry::drawGeometryPoints(s, nullptr, myFrameParent->getViewNet()->getPositionInformation(), {firstPosition, secondPosition},
                                         pointColor, RGBColor::WHITE, s.neteditSizeSettings.polylineWidth, 1, false, true);
+    */
         // Pop last matrix
         GLHelper::popMatrix();
     }
@@ -417,7 +419,7 @@ void
 GNEConsecutiveSelector::clearPath() {
     // reset all flags
     for (const auto& edge : myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->getEdges()) {
-        for (const auto& lane : edge.second->getLanes()) {
+        for (const auto& lane : edge.second.second->getLanes()) {
             lane->resetCandidateFlags();
         }
     }

@@ -78,13 +78,10 @@ jobs:
     - name: Building libsumo plain
       if: matrix.build_type == 'libsumo'
       run: |
-        mkdir build_msvc
         cmake -Bbuild_msvc -GNinja -DCHECK_OPTIONAL_LIBS=false
         cmake --build build_msvc --config Release --target libsumo libtraci
         xcopy /s data .\tools\libsumo\data\
         python tools\build_config\version.py tools\build_config\setup-libsumo.py tools\setup.py
-        python -m build --wheel tools -o dist --config-setting=--plat-name=win_amd64
-        python tools\build_config\version.py tools\build_config\setup-libtraci.py tools\setup.py
         python -m build --wheel tools -o dist --config-setting=--plat-name=win_amd64
 
     - name: Building SUMO Wheels
@@ -194,6 +191,8 @@ jobs:
     if: github.repository == 'eclipse-sumo/sumo' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags'))
     needs: [test-wheels]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
 
     steps:
     - uses: actions/download-artifact@v3
@@ -209,12 +208,9 @@ jobs:
     - name: Publish to Test PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        password: ${{ secrets.TEST_PYPI_TOKEN }}
         repository-url: https://test.pypi.org/legacy/
         skip-existing: true
 
     - name: Publish to PyPI
       if: startsWith(github.ref, 'refs/tags')
       uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        password: ${{ secrets.PYPI_TOKEN }}

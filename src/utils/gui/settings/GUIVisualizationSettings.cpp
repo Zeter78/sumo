@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -184,27 +184,7 @@ const double GUIVisualizationWidthSettings::embeddedRouteWidth(0.55);
 // details of certain netedit objects (0 = drawn always)
 // -------------------------------------------------------------------------
 
-const double GUIVisualizationDetailSettings::connectionsDemandMode(5);
-const double GUIVisualizationDetailSettings::laneTextures(20); // originally 10
-const double GUIVisualizationDetailSettings::lockIcon(30);
-const double GUIVisualizationDetailSettings::additionalTextures(20); // originally 10
-const double GUIVisualizationDetailSettings::geometryPointsDetails(10);
-const double GUIVisualizationDetailSettings::geometryPointsText(20);
-const double GUIVisualizationDetailSettings::stoppingPlaceDetails(10);
-const double GUIVisualizationDetailSettings::stoppingPlaceText(10);
-const double GUIVisualizationDetailSettings::detectorDetails(10);
-const double GUIVisualizationDetailSettings::detectorText(30);
-const double GUIVisualizationDetailSettings::calibratorText(10);
-const double GUIVisualizationDetailSettings::stopsDetails(10);
-const double GUIVisualizationDetailSettings::stopsText(50);
-const double GUIVisualizationDetailSettings::vehicleTriangles(2);
-const double GUIVisualizationDetailSettings::vehicleBoxes(5);
-const double GUIVisualizationDetailSettings::vehicleShapes(10);
-const double GUIVisualizationDetailSettings::personTriangles(2);
-const double GUIVisualizationDetailSettings::personCircles(5);
-const double GUIVisualizationDetailSettings::personShapes(10);
-const double GUIVisualizationDetailSettings::personExaggeration(4);
-const double GUIVisualizationDetailSettings::plans(5);
+const double GUIVisualizationDetailSettings::tmp(5);
 
 // -------------------------------------------------------------------------
 // scheme names
@@ -616,9 +596,8 @@ GUIVisualizationSettings::GUIVisualizationSettings(const std::string& _name, boo
     gaming(false),
     drawBoundaries(false),
     selectorFrameScale(1.),
-    drawForPositionSelection(false),
+    drawForViewObjectsHandler(false),
     drawForRectangleSelection(false),
-    forceDrawForPositionSelection(false),
     forceDrawForRectangleSelection(false),
     disableDottedContours(false),
     geometryIndices(false, 50, RGBColor(255, 0, 128, 255)),
@@ -1739,7 +1718,6 @@ GUIVisualizationSettings::save(OutputDevice& dev) const {
     dev.writeAttr("dither", dither);
     dev.writeAttr("fps", fps);
     dev.writeAttr("drawBoundaries", drawBoundaries);
-    dev.writeAttr("forceDrawPositionSelection", forceDrawForPositionSelection);
     dev.writeAttr("disableDottedContours", disableDottedContours);
     dev.writeAttr("forceDrawRectangleSelection", forceDrawForRectangleSelection);
     geometryIndices.print(dev, "geometryIndices");
@@ -2002,9 +1980,6 @@ GUIVisualizationSettings::operator==(const GUIVisualizationSettings& v2) {
         return false;
     }
     if (drawBoundaries != v2.drawBoundaries) {
-        return false;
-    }
-    if (forceDrawForPositionSelection != v2.forceDrawForPositionSelection) {
         return false;
     }
     if (disableDottedContours != v2.disableDottedContours) {
@@ -2396,6 +2371,7 @@ GUIVisualizationSettings::getTextAngle(double objectAngle) const {
     return objectAngle;
 }
 
+
 bool
 GUIVisualizationSettings::flippedTextAngle(double objectAngle) const {
     double viewAngle = objectAngle - angle;
@@ -2408,14 +2384,32 @@ GUIVisualizationSettings::flippedTextAngle(double objectAngle) const {
 }
 
 
-
 bool
-GUIVisualizationSettings::drawAdditionals(const double exaggeration) const {
-    // if we're drawing for rectangle selection, draw always
-    if (drawForRectangleSelection) {
+GUIVisualizationSettings::checkBoundarySizeDrawing(const double w, const double h) const {
+    const double size = MAX2(w, h);
+    if (drawForViewObjectsHandler) {
         return true;
     } else {
-        return (scale * exaggeration) > 1.;
+        // for low computers 20. for high 10
+        return (scale * size) > 15;
+    }
+}
+
+
+GUIVisualizationSettings::Detail
+GUIVisualizationSettings::getDetailLevel(const double exaggeration) const {
+    // calculate factor
+    const auto factor = (scale * exaggeration);
+    if (factor >= 10) {
+        return GUIVisualizationSettings::Detail::Level0;
+    } else if (factor >= 5) {
+        return GUIVisualizationSettings::Detail::Level1;
+    } else if (factor >= 2.5) {
+        return GUIVisualizationSettings::Detail::Level2;
+    } else if (factor >= 1.25) {
+        return GUIVisualizationSettings::Detail::Level3;
+    } else {
+        return GUIVisualizationSettings::Detail::Level4;
     }
 }
 
@@ -2426,32 +2420,6 @@ GUIVisualizationSettings::drawDetail(const double detail, const double exaggerat
         return true;
     } else {
         return ((scale * exaggeration) >= detail);
-    }
-}
-
-
-int
-GUIVisualizationSettings::getCircleResolution() const {
-    if (drawForPositionSelection || drawForRectangleSelection) {
-        return 8;
-    } else if (scale >= 10) {
-        return 32;
-    } else if (scale >= 5) {
-        return 16;
-    } else {
-        return 8;
-    }
-}
-
-
-bool
-GUIVisualizationSettings::drawDottedContour(const double exaggeration) const {
-    if (disableDottedContours) {
-        return false;
-    } else if (drawForPositionSelection || drawForRectangleSelection) {
-        return false;
-    } else {
-        return (scale * exaggeration) > 3.;
     }
 }
 

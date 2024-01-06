@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -88,6 +88,11 @@ MSTransportable::getRNG() const {
     return getEdge()->getLanes()[0]->getRNG();
 }
 
+int
+MSTransportable::getRNGIndex() const {
+    return getEdge()->getLanes()[0]->getRNGIndex();
+}
+
 bool
 MSTransportable::proceed(MSNet* net, SUMOTime time, const bool vehicleArrived) {
     MSStage* const prior = *myStep;
@@ -101,7 +106,7 @@ MSTransportable::proceed(MSNet* net, SUMOTime time, const bool vehicleArrived) {
     /* We need to check whether an access stage is needed (or maybe even two).
        The general scheme is: If the prior stage ended at a stop and the next stage
        starts at an edge which is not the one the stop is at, but the stop has an access to it
-       we need an access stage. The same is true if prior ends at an edge, the next stage 
+       we need an access stage. The same is true if prior ends at an edge, the next stage
        is allowed to start at any stop the edge has access to.
        If we start at a stop or end at a stop no access is needed.
     */
@@ -309,6 +314,16 @@ MSTransportable::setSpeed(double speed) {
 }
 
 
+bool
+MSTransportable::replaceRoute(ConstMSRoutePtr newRoute, const std::string& /* info */, bool /* onInit */, int /* offset */, bool /* addRouteStops */, bool /* removeStops */, std::string* /* msgReturn */) {
+    if (isPerson()) {
+        static_cast<MSPerson*>(this)->reroute(newRoute->getEdges(), getPositionOnLane(), 0, 1);
+        return true;
+    }
+    return false;
+}
+
+
 void
 MSTransportable::replaceVehicleType(MSVehicleType* type) {
     const SUMOVehicleClass oldVClass = myVType->getVehicleClass();
@@ -359,6 +374,18 @@ MSTransportable::getStageSummary(int stageIndex) const {
     assert(stageIndex < (int)myPlan->size());
     assert(stageIndex >= 0);
     return (*myPlan)[stageIndex]->getStageSummary(myAmPerson);
+}
+
+
+const std::set<SUMOTrafficObject::NumericalID>
+MSTransportable::getUpcomingEdgeIDs() const {
+    std::set<SUMOTrafficObject::NumericalID> result;
+    for (auto step = myStep; step != myPlan->end(); ++step) {
+        for (const MSEdge* const e : (*step)->getEdges()) {
+            result.insert(e->getNumericalID());
+        }
+    }
+    return result;
 }
 
 
@@ -457,7 +484,7 @@ MSTransportable::rerouteParkingArea(MSStoppingPlace* orig, MSStoppingPlace* repl
 }
 
 
-MSTransportableDevice*
+MSDevice*
 MSTransportable::getDevice(const std::type_info& type) const {
     for (MSTransportableDevice* const dev : myDevices) {
         if (typeid(*dev) == type) {
@@ -488,15 +515,18 @@ MSTransportable::getSlope() const {
     return edge->getLanes()[0]->getShape().slopeDegreeAtOffset(gp);
 }
 
+
 SUMOTime
-MSTransportable::getWaitingTime() const {
+MSTransportable::getWaitingTime(const bool /* accumulated */) const {
     return (*myStep)->getWaitingTime(MSNet::getInstance()->getCurrentTimeStep());
 }
+
 
 double
 MSTransportable::getMaxSpeed() const {
     return MIN2(getVehicleType().getMaxSpeed(), getVehicleType().getDesiredMaxSpeed() * getChosenSpeedFactor());
 }
+
 
 SUMOVehicleClass
 MSTransportable::getVClass() const {

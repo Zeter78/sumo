@@ -319,6 +319,14 @@ if (APPLE)
     # we know that openGL is deprecated for newer MacOS
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGL_SILENCE_DEPRECATION")
 
+    # Xcode 15 on macOS sonoma complains about duplicate libraries for the linker, so we disable the warning for xcode >= 15
+    if (CLANG_COMPILER)
+        string(REGEX MATCH "^[0-9]+" ClangMajorVersion "${CMAKE_CXX_COMPILER_VERSION}")
+        if (ClangMajorVersion GREATER_EQUAL 15)
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-no_warn_duplicate_libraries")
+        endif()
+    endif()
+
     # Recommendation, also add a "brew --prefix" custom command to detect a homebrew build environment
     execute_process(COMMAND brew --prefix RESULT_VARIABLE DETECT_BREW OUTPUT_VARIABLE BREW_PREFIX ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
     if (${DETECT_BREW} EQUAL 0)
@@ -716,7 +724,7 @@ if (MVN_EXECUTABLE AND Java_FOUND)
         get_filename_component(JAVA_BIN ${Java_JAVAC_EXECUTABLE} DIRECTORY)
         get_filename_component(JAVA_HOME ${JAVA_BIN} DIRECTORY)
         set(MVN_COMMAND_PREFIX ${CMAKE_COMMAND} -E env JAVA_HOME=${JAVA_HOME})
-#        set(MVN_REPO "-Dmaven.repo.local=${CMAKE_BINARY_DIR}/m2")
+        set(MVN_REPO "-Dmaven.repo.local=${CMAKE_BINARY_DIR}/m2")
     endif ()
     add_custom_target(traas
         COMMAND ${MVN_COMMAND_PREFIX} ${MVN_EXECUTABLE} ${MVN_REPO} --batch-mode -f tools/contributed/traas/pom.xml clean install

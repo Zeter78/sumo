@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -44,15 +44,15 @@
 #include <utils/gui/windows/GUIAppEnum.h>
 #include <utils/options/OptionsCont.h>
 #include <utils/gui/div/GUIDesigns.h>
-#include <utils/gui/div/GUIGlobalPostDrawing.h>
+#include <utils/gui/div/GUIGlobalViewObjectsHandler.h>
 #include <netedit/GNEViewParent.h>
 #include <netedit/frames/network/GNECreateEdgeFrame.h>
-
 
 #include "GNEConnection.h"
 #include "GNEJunction.h"
 #include "GNECrossing.h"
 #include "GNEWalkingArea.h"
+#include "GNEInternalLane.h"
 
 
 // ===========================================================================
@@ -62,22 +62,19 @@
 GNEJunction::GNEJunction(GNENet* net, NBNode* nbn, bool loaded) :
     GNENetworkElement(net, nbn->getID(), GLO_JUNCTION, SUMO_TAG_JUNCTION,
                       GUIIconSubSys::getIcon(GUIIcon::JUNCTION), {}, {}, {}, {}, {}, {}),
-                                myNBNode(nbn),
-                                myMaxDrawingSize(1),
-                                myAmCreateEdgeSource(false),
-                                myLogicStatus(loaded ? FEATURE_LOADED : FEATURE_GUESSED),
-                                myAmResponsible(false),
-                                myHasValidLogic(loaded),
-                                myAmTLSSelected(false),
-                                myColorForMissingConnections(false),
-                                myTesselation(nbn->getID(), "", RGBColor::MAGENTA, nbn->getShape(), false, true, 0),
-myExaggeration(1) {
+    myNBNode(nbn),
+    myDrawingToggle(new int),
+    myLogicStatus(loaded ? FEATURE_LOADED : FEATURE_GUESSED),
+    myHasValidLogic(loaded),
+    myTesselation(nbn->getID(), "", RGBColor::MAGENTA, nbn->getShape(), false, true, 0) {
     // update centering boundary without updating grid
     updateCenteringBoundary(false);
 }
 
 
 GNEJunction::~GNEJunction() {
+    // delete drawing toggle
+    delete myDrawingToggle;
     // delete all GNECrossing
     for (const auto& crossing : myGNECrossings) {
         crossing->decRef();
@@ -128,8 +125,6 @@ GNEJunction::updateGeometry() {
 
 void
 GNEJunction::updateGeometryAfterNetbuild(bool rebuildNBNodeCrossings) {
-    // recalc max drawing size
-    myMaxDrawingSize = MAX2(getCenteringBoundary().getWidth(), getCenteringBoundary().getHeight());
     // rebuild crossings
     rebuildGNECrossings(rebuildNBNodeCrossings);
     // clear walking areas
@@ -227,7 +222,7 @@ GNEJunction::checkDrawToContour() const {
             // check if we're over a destiny junction
             if (junctionSource) {
                 // don't create edges with the same from-to junction
-                if ((junctionSource != this) && gPostDrawing.isElementUnderCursor(this)) {
+                if ((junctionSource != this) && gViewObjectsHandler.isElementSelected(this)) {
                     // this junction can be a destiny junction
                     return true;
                 }
@@ -284,7 +279,7 @@ GNEJunction::checkDrawOverContour() const {
         // check if vehicle can be placed over from-to junctions
         if (vehicleTemplate && vehicleTemplate->getTagProperty().vehicleJunctions()) {
             // check if junction is under cursor
-            return gPostDrawing.isElementUnderCursor(this);
+            return gViewObjectsHandler.isElementSelected(this);
         } else {
             return false;
         }
@@ -294,7 +289,7 @@ GNEJunction::checkDrawOverContour() const {
                 ((modes.demandEditMode == DemandEditMode::DEMAND_PERSONPLAN) && personPlanFramePlanSelector->markJunctions()) ||
                 ((modes.demandEditMode == DemandEditMode::DEMAND_CONTAINER) && containerFramePlanSelector->markJunctions()) ||
                 ((modes.demandEditMode == DemandEditMode::DEMAND_CONTAINERPLAN) && containerPlanFramePlanSelector->markJunctions())) {
-            return myNet->getViewNet()->checkDrawOverContour(this);
+            return myNet->getViewNet()->getViewObjectsSelector().getGUIGlObjectFront() == this;
         }
     }
     return false;
@@ -307,7 +302,7 @@ GNEJunction::checkDrawDeleteContour() const {
     const auto& editModes = myNet->getViewNet()->getEditModes();
     // check if we're in delete mode
     if (editModes.isCurrentSupermodeNetwork() && (editModes.networkEditMode == NetworkEditMode::NETWORK_DELETE)) {
-        return myNet->getViewNet()->checkDrawDeleteContour(this, mySelected);
+        return myNet->getViewNet()->checkOverLockedElement(this, mySelected);
     } else {
         return false;
     }
@@ -320,7 +315,22 @@ GNEJunction::checkDrawSelectContour() const {
     const auto& editModes = myNet->getViewNet()->getEditModes();
     // check if we're in select mode
     if (editModes.isCurrentSupermodeNetwork() && (editModes.networkEditMode == NetworkEditMode::NETWORK_SELECT)) {
-        return myNet->getViewNet()->checkDrawSelectContour(this, mySelected);
+        return myNet->getViewNet()->checkOverLockedElement(this, mySelected);
+    } else {
+        return false;
+    }
+}
+
+
+bool
+GNEJunction::checkDrawMoveContour() const {
+    // get edit modes
+    const auto& editModes = myNet->getViewNet()->getEditModes();
+    // check if we're in move mode
+    if (!myNet->getViewNet()->isMovingElement() && editModes.isCurrentSupermodeNetwork() &&
+        (editModes.networkEditMode == NetworkEditMode::NETWORK_MOVE) && myNet->getViewNet()->checkOverLockedElement(this, mySelected)) {
+        // only move the first element
+        return myNet->getViewNet()->getViewObjectsSelector().getGUIGlObjectFront() == this;
     } else {
         return false;
     }
@@ -332,9 +342,7 @@ GNEJunction::getMoveOperation() {
     // edit depending if shape is being edited
     if (isShapeEdited()) {
         // calculate move shape operation
-        return calculateMoveShapeOperation(myNBNode->getShape(), myNet->getViewNet()->getPositionInformation(),
-                                           myNet->getViewNet()->getVisualisationSettings().neteditSizeSettings.junctionGeometryPointRadius,
-                                           true, false);
+        return calculateMoveShapeOperation(this, myNBNode->getShape(), false);
     } else {
         // return move junction position
         return new GNEMoveOperation(this, myNBNode->getPosition());
@@ -555,26 +563,58 @@ GNEJunction::getExaggeration(const GUIVisualizationSettings& s) const {
 }
 
 
+Boundary
+GNEJunction::getCenteringBoundary() const {
+    return myJunctionBoundary;
+}
+
+
 void
 GNEJunction::updateCenteringBoundary(const bool updateGrid) {
-    // Remove object from net
-    if (updateGrid) {
+    // Remove object from grid
+    if (myJunctionInGrid && updateGrid) {
         myNet->removeGLObjectFromGrid(this);
     }
-    // update boundary
+    // calculate boundary using a radius bigger than geometry point
+    myJunctionBoundary = Boundary(myNBNode->getPosition().x() - 1, myNBNode->getPosition().y() - 1,
+                                  myNBNode->getPosition().x() + 1, myNBNode->getPosition().y() + 1);
+    myJunctionBoundary.grow(10);
+    // add shape
     if (myNBNode->getShape().size() > 0) {
-        myBoundary = myNBNode->getShape().getBoxBoundary();
-    } else {
-        // calculate boundary using EXTENT as size
-        const double EXTENT = 2;
-        Boundary b(myNBNode->getPosition().x() - EXTENT, myNBNode->getPosition().y() - EXTENT,
-                   myNBNode->getPosition().x() + EXTENT, myNBNode->getPosition().y() + EXTENT);
-        myBoundary = b;
+        myJunctionBoundary.add(myNBNode->getShape().getBoxBoundary());
+        myJunctionBoundary.grow(5);
     }
-    myBoundary.grow(10);
-    // add object into net
+    // add boundaries of all connections, walking areas and crossings
+    for (const auto &edge : myGNEIncomingEdges) {
+        for (const auto &connection : edge->getGNEConnections()) {
+            const auto boundary = connection->getCenteringBoundary();
+            if (boundary.isInitialised()) {
+                myJunctionBoundary.add(boundary);
+            }
+        }
+    }
+    for (const auto &crossing : myGNECrossings) {
+        const auto boundary = crossing->getCenteringBoundary();
+        if (boundary.isInitialised()) {
+            myJunctionBoundary.add(boundary);
+        }
+    }
+    for (const auto &walkingArea : myGNEWalkingAreas) {
+        const auto boundary = walkingArea->getCenteringBoundary();
+        if (boundary.isInitialised()) {
+            myJunctionBoundary.add(boundary);
+        }
+    }
+
+    // add object into grid
     if (updateGrid) {
-        myNet->addGLObjectIntoGrid(this);
+        // if junction has at least one edge, then don't add in grid (because uses the edge's grid)
+        if (myGNEIncomingEdges.size() + myGNEOutgoingEdges.size() > 0) {
+            myJunctionInGrid = false;
+        } else {
+            myJunctionInGrid = true;
+            myNet->addGLObjectIntoGrid(this);
+        }
     }
     // trigger rebuilding tesselation
     myExaggeration = 2;
@@ -583,83 +623,56 @@ GNEJunction::updateCenteringBoundary(const bool updateGrid) {
 
 void
 GNEJunction::drawGL(const GUIVisualizationSettings& s) const {
-    // check if boundary has to be drawn
-    if (s.drawBoundaries) {
-        GLHelper::drawBoundary(getCenteringBoundary());
-    }
-    // get junction exaggeration
-    const double junctionExaggeration = getExaggeration(s);
-    // check if draw junction as shape
-    const bool junctionShape = ((myNBNode->getShape().size() > 0) && s.drawJunctionShape);
-    const bool junctionBubble = drawAsBubble(s);
-    // only continue if exaggeration is greater than 0
-    if (junctionExaggeration > 0) {
-        // get mouse position
-        const Position mousePosition = myNet->getViewNet()->getPositionInformation();
-        // push junction name
-        GLHelper::pushName(getGlID());
-        // push layer matrix
-        GLHelper::pushMatrix();
-        // translate to front
-        myNet->getViewNet()->drawTranslateFrontAttributeCarrier(this, GLO_JUNCTION);
-        // push name
-        if (s.scale * junctionExaggeration * myMaxDrawingSize < 1.) {
-            // draw something simple so that selection still works
-            GLHelper::drawBoxLine(myNBNode->getPosition(), 0, 1, 1);
-        } else {
-            // draw junction as shape
-            if (junctionShape) {
-                drawJunctionAsShape(s, junctionExaggeration, mousePosition);
-            }
-            // draw junction as bubble
-            if (junctionBubble) {
-                drawJunctionAsBubble(s, junctionExaggeration, mousePosition);
-            }
-            // draw TLS
-            drawTLSIcon(s);
-            // draw elevation
-            if (!s.drawForRectangleSelection && myNet->getViewNet()->getNetworkViewOptions().editingElevation()) {
+    // first check drawing toggle and boundary selection
+    if ((*myDrawingToggle != myNet->getViewNet()->getDrawingToggle()) && checkDrawingBoundarySelection()) {
+        // draw boundaries
+        if (myJunctionInGrid) {
+            GLHelper::drawBoundary(s, getCenteringBoundary());
+        }
+        // get junction exaggeration
+        const double junctionExaggeration = getExaggeration(s);
+        // only continue if exaggeration is greater than 0
+        if (junctionExaggeration > 0) {
+            // get detail level
+            const auto d = s.getDetailLevel(junctionExaggeration);
+            // check if draw junction as shape
+            const bool drawBubble = drawAsBubble(s);
+            // draw geometry only if we'rent in drawForObjectUnderCursor mode
+            if (!s.drawForViewObjectsHandler) {
+                // push layer matrix
                 GLHelper::pushMatrix();
-                // Translate to center of junction
-                glTranslated(myNBNode->getPosition().x(), myNBNode->getPosition().y(), 0.1);
-                // draw Z value
-                GLHelper::drawText(toString(myNBNode->getPosition().z()), Position(), GLO_MAX - 5, s.junctionID.scaledSize(s.scale), s.junctionID.color);
+                // translate to front
+                myNet->getViewNet()->drawTranslateFrontAttributeCarrier(this, GLO_JUNCTION);
+                // draw junction as shape
+                drawJunctionAsShape(s, d, junctionExaggeration);
+                // draw junction as bubble
+                if (drawBubble) {
+                    drawJunctionAsBubble(s, d, junctionExaggeration);
+                }
+                // draw TLS
+                drawTLSIcon(s, d);
+                // draw elevation
+                drawElevation(s, d);
+                // pop layer Matrix
                 GLHelper::popMatrix();
+                // draw lock icon
+                GNEViewNetHelper::LockIcon::drawLockIcon(d, this, getType(), getPositionInView(), 1);
+                // draw junction name
+                drawJunctionName(s, d);
+                // draw dotted contour for shape
+                myNetworkElementContour.drawDottedContours(s, d, this, s.dottedContourSettings.segmentWidth, true);
+                // draw dotted contour for bubble
+                if (drawBubble) {
+                    myCircleContour.drawDottedContours(s, d, this, s.dottedContourSettings.segmentWidth, true);
+                }
             }
+            // calculate junction contour (always before children)
+            calculateJunctioncontour(s, d, junctionExaggeration, drawBubble);
+            // draw Junction childs
+            drawJunctionChildren(s, d);
         }
-        // pop layer Matrix
-        GLHelper::popMatrix();
-        // pop junction name
-        GLHelper::popName();
-        // draw lock icon
-        GNEViewNetHelper::LockIcon::drawLockIcon(this, getType(), getPositionInView(), 1);
-        // draw name and ID
-        if (!s.drawForRectangleSelection) {
-            drawName(myNBNode->getPosition(), s.scale, s.junctionID);
-            if (s.junctionName.show(this) && myNBNode->getName() != "") {
-                GLHelper::drawTextSettings(s.junctionName, myNBNode->getName(), myNBNode->getPosition(), s.scale, s.angle);
-            }
-        }
-        // draw Junction childs
-        drawJunctionChildren(s);
-        // draw path additional elements
-        myNet->getPathManager()->drawJunctionPathElements(s, this);
-        // continue depending of shapes
-        if (junctionShape) {
-            // check if mouse within geometry
-            mouseWithinGeometry(myNBNode->getShape());
-            // draw dotted contour
-            if (myNBNode->getShape().area() > 1) {
-                myContour.drawDottedContourClosed(s, myNBNode->getShape(), junctionExaggeration, true, s.dottedContourSettings.segmentWidth);
-            }
-        }
-        if (junctionBubble) {
-            // check mouse within bubble
-            mouseWithinGeometry(myNBNode->getPosition(), s.neteditSizeSettings.junctionBubbleRadius * junctionExaggeration);
-            // draw dotted contour
-            myContour.drawDottedContourCircle(s, myNBNode->getCenter(), s.neteditSizeSettings.junctionBubbleRadius, junctionExaggeration,
-                                              s.dottedContourSettings.segmentWidth);
-        }
+        // update drawing toggle
+        *myDrawingToggle = myNet->getViewNet()->getDrawingToggle();
     }
 }
 
@@ -696,6 +709,12 @@ GNEJunction::getJunctionNeighbours() const {
         junctions.insert(outgoingEdge->getToJunction());
     }
     return std::vector<GNEJunction*>(junctions.begin(), junctions.end());
+}
+
+
+bool
+GNEJunction::isJunctionInGrid() const {
+    return myJunctionInGrid;
 }
 
 
@@ -1174,12 +1193,6 @@ GNEJunction::setJunctionType(const std::string& value, GNEUndoList* undoList) {
 }
 
 
-double
-GNEJunction::getMaxDrawingSize() const {
-    return myMaxDrawingSize;
-}
-
-
 void
 GNEJunction::clearWalkingAreas() {
     // delete non retrieved GNEWalkingAreas (we don't need to extract if from Tree two times)
@@ -1221,6 +1234,28 @@ GNEJunction::rebuildGNEWalkingAreas() {
         retrievedGNEWalkingArea->updateCenteringBoundary(false);
         // add in walkingAreas
         myGNEWalkingAreas.push_back(retrievedGNEWalkingArea);
+    }
+}
+
+
+
+void
+GNEJunction::addInternalLane(const GNEInternalLane* internalLane) {
+    if (std::find(myInternalLanes.begin(), myInternalLanes.end(), internalLane) != myInternalLanes.end()) {
+        throw ProcessError(internalLane->getTagStr() + " with ID='" + internalLane->getID() + "' already exist");
+    } else {
+        myInternalLanes.push_back(internalLane);
+    }
+}
+
+
+void
+GNEJunction::removeInternalLane(const GNEInternalLane* internalLane) {
+    const auto finder = std::find(myInternalLanes.begin(), myInternalLanes.end(), internalLane);
+    if (finder == myInternalLanes.end()) {
+        throw ProcessError(internalLane->getTagStr() + " with ID='" + internalLane->getID() + "' wasn't previously inserted");
+    } else {
+        myInternalLanes.erase(finder);
     }
 }
 
@@ -1572,75 +1607,54 @@ GNEJunction::drawAsBubble(const GUIVisualizationSettings& s) const {
 
 
 void
-GNEJunction::drawJunctionAsBubble(const GUIVisualizationSettings& s,
-                                  const double junctionExaggeration, const Position mousePosition) const {
+GNEJunction::drawJunctionAsBubble(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d,
+                                  const double exaggeration) const {
     // calculate bubble radius
-    const double bubbleRadius = s.neteditSizeSettings.junctionBubbleRadius * junctionExaggeration;
+    const double bubbleRadius = s.neteditSizeSettings.junctionBubbleRadius * exaggeration;
     // set bubble color
     const RGBColor bubbleColor = setColor(s, true);
-    // recognize full transparency and simply don't draw
-    if (bubbleColor.alpha() != 0) {
-        // check if mouse is in bubble
-        const bool mouseInBubble = (mousePosition.distanceSquaredTo2D(myNBNode->getPosition()) <= (bubbleRadius * bubbleRadius));
-        // only draw filled circle if we aren't in draw for selecting mode, or if distance to center is enough)
-        if (!s.drawForPositionSelection || mouseInBubble) {
-            // push matrix
-            GLHelper::pushMatrix();
-            // set color
-            GLHelper::setColor(bubbleColor);
-            // move matrix junction center
-            glTranslated(myNBNode->getPosition().x(), myNBNode->getPosition().y(), 0.1);
-            // draw filled circle
-            GLHelper::drawFilledCircle(bubbleRadius, s.getCircleResolution());
-            // pop matrix
-            GLHelper::popMatrix();
-        }
-    }
+    // push matrix
+    GLHelper::pushMatrix();
+    // set color
+    GLHelper::setColor(bubbleColor);
+    // move matrix junction center
+    glTranslated(myNBNode->getPosition().x(), myNBNode->getPosition().y(), 0.1);
+    // draw filled circle
+    GLHelper::drawFilledCircleDetailled(d, bubbleRadius);
+    // pop matrix
+    GLHelper::popMatrix();
 }
 
 
 void
-GNEJunction::drawJunctionAsShape(const GUIVisualizationSettings& s,
-                                 const double junctionExaggeration, const Position mousePosition) const {
-    // check if draw start und end
-    const bool drawExtremeSymbols = myNet->getViewNet()->getEditModes().isCurrentSupermodeNetwork() &&
-                                    myNet->getViewNet()->getEditModes().networkEditMode == NetworkEditMode::NETWORK_MOVE;
-    // set shape color
-    const RGBColor junctionShapeColor = setColor(s, false);
-    // recognize full transparency and simply don't draw
-    if (junctionShapeColor.alpha() != 0) {
+GNEJunction::drawJunctionAsShape(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d, const double exaggeration) const {
+    // first check drawing conditions
+    if (s.drawJunctionShape && (myNBNode->getShape().size() > 0)) {
+        // set shape color
+        const RGBColor junctionShapeColor = setColor(s, false);
         // set color
         GLHelper::setColor(junctionShapeColor);
-        // adjust shape to exaggeration
-        if ((junctionExaggeration > 1 || myExaggeration > 1) && junctionExaggeration != myExaggeration) {
-            myExaggeration = junctionExaggeration;
+        // adjust shape to exaggeration (check)
+        if ((exaggeration > 1 || myExaggeration > 1) && exaggeration != myExaggeration) {
+            myExaggeration = exaggeration;
             myTesselation.setShape(myNBNode->getShape());
             myTesselation.getShapeRef().closePolygon();
-            myTesselation.getShapeRef().scaleRelative(junctionExaggeration);
+            myTesselation.getShapeRef().scaleRelative(exaggeration);
             myTesselation.myTesselation.clear();
         }
-        // first check if inner junction polygon can be drawn
-        if (s.drawForPositionSelection) {
-            // only draw a point if mouse is around shape
-            if (myTesselation.getShape().around(mousePosition)) {
-                // push matrix
-                GLHelper::pushMatrix();
-                // move to mouse position
-                glTranslated(mousePosition.x(), mousePosition.y(), 0.1);
-                // draw a simple circle
-                GLHelper::drawFilledCircle(1, s.getCircleResolution());
-                // pop matrix
-                GLHelper::popMatrix();
-            }
-        } else if ((s.scale * junctionExaggeration * myMaxDrawingSize) >= 40) {
+        // check if draw tesselation or or polygon
+        if (d <= GUIVisualizationSettings::Detail::DrawPolygonTesselation) {
             // draw shape with high detail
             myTesselation.drawTesselation(myTesselation.getShape());
         } else {
             // draw shape
-            GLHelper::drawFilledPoly(myTesselation.getShape(), true);
+            GLHelper::drawFilledPoly(myNBNode->getShape(), true);
         }
         // draw shape points only in Network supermode
-        if (myShapeEdited && s.drawMovingGeometryPoint(junctionExaggeration, s.neteditSizeSettings.junctionGeometryPointRadius) && myNet->getViewNet()->getEditModes().isCurrentSupermodeNetwork()) {
+        if (myShapeEdited && myNet->getViewNet()->getEditModes().isCurrentSupermodeNetwork() &&
+            s.drawMovingGeometryPoint(exaggeration, s.neteditSizeSettings.junctionGeometryPointRadius)) {
+            // get mouse position
+            const auto mousePos = myNet->getViewNet()->getPositionInformation();
             // set color
             const RGBColor darkerColor = junctionShapeColor.changedBrightness(-32);
             // calculate geometry
@@ -1648,34 +1662,30 @@ GNEJunction::drawJunctionAsShape(const GUIVisualizationSettings& s,
             // obtain junction Shape
             PositionVector junctionOpenShape = myNBNode->getShape();
             // adjust shape to exaggeration
-            if (junctionExaggeration > 1) {
-                junctionOpenShape.scaleRelative(junctionExaggeration);
+            if (exaggeration > 1) {
+                junctionOpenShape.scaleRelative(exaggeration);
             }
             // update geometry
             junctionGeometry.updateGeometry(junctionOpenShape);
             // set color
             GLHelper::setColor(darkerColor);
             // draw shape
-            GUIGeometry::drawGeometry(s, myNet->getViewNet()->getPositionInformation(), junctionGeometry, s.neteditSizeSettings.junctionGeometryPointRadius * 0.5);
+            GUIGeometry::drawGeometry(d, junctionGeometry, s.neteditSizeSettings.junctionGeometryPointRadius * 0.5);
             // draw geometry points
-            GUIGeometry::drawGeometryPoints(s, myNet->getViewNet()->getPositionInformation(), junctionOpenShape, darkerColor, RGBColor::BLACK,
-                                            s.neteditSizeSettings.junctionGeometryPointRadius, junctionExaggeration,
-                                            myNet->getViewNet()->getNetworkViewOptions().editingElevation(), drawExtremeSymbols);
-            // draw moving hint
-            if (myNet->getViewNet()->getEditModes().networkEditMode == NetworkEditMode::NETWORK_MOVE) {
-                GUIGeometry::drawMovingHint(s, myNet->getViewNet()->getPositionInformation(), junctionOpenShape, darkerColor,
-                                            s.neteditSizeSettings.junctionGeometryPointRadius, junctionExaggeration);
-            }
+            GUIGeometry::drawGeometryPoints(d, junctionOpenShape, darkerColor,
+                                            s.neteditSizeSettings.junctionGeometryPointRadius, exaggeration,
+                                            myNet->getViewNet()->getNetworkViewOptions().editingElevation());
         }
     }
 }
 
 
 void
-GNEJunction::drawTLSIcon(const GUIVisualizationSettings& s) const {
+GNEJunction::drawTLSIcon(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d) const {
     // draw TLS icon if isn't being drawn for selecting
-    if ((myNet->getViewNet()->getEditModes().networkEditMode == NetworkEditMode::NETWORK_TLS) &&
-            (myNBNode->isTLControlled()) && !myAmTLSSelected && !s.drawForRectangleSelection) {
+    if ((d <= GUIVisualizationSettings::Detail::TLSIcon) && myNBNode->isTLControlled() &&
+        (myNet->getViewNet()->getEditModes().networkEditMode == NetworkEditMode::NETWORK_TLS) &&
+        !myAmTLSSelected && !s.drawForRectangleSelection) {
         GLHelper::pushMatrix();
         const Position pos = myNBNode->getPosition();
         glTranslated(pos.x(), pos.y(), 2.2);
@@ -1689,25 +1699,85 @@ GNEJunction::drawTLSIcon(const GUIVisualizationSettings& s) const {
 
 
 void
-GNEJunction::drawJunctionChildren(const GUIVisualizationSettings& s) const {
-    // draw crossings
-    for (const auto& crossing : myGNECrossings) {
-        crossing->drawGL(s);
+GNEJunction::drawElevation(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d) const {
+    // check if draw elevation
+    if ((d <= GUIVisualizationSettings::Detail::Text) && myNet->getViewNet()->getNetworkViewOptions().editingElevation()) {
+        GLHelper::pushMatrix();
+        // Translate to center of junction
+        glTranslated(myNBNode->getPosition().x(), myNBNode->getPosition().y(), 0.1);
+        // draw Z value
+        GLHelper::drawText(toString(myNBNode->getPosition().z()), Position(), GLO_MAX - 5, s.junctionID.scaledSize(s.scale), s.junctionID.color);
+        GLHelper::popMatrix();
     }
-    // draw walkingAreas
-    for (const auto& walkingArea : myGNEWalkingAreas) {
-        walkingArea->drawGL(s);
-    }
-    // draw connections and route elements connections (Only for incoming edges)
-    for (const auto& incomingEdge : myGNEIncomingEdges) {
-        for (const auto& connection : incomingEdge->getGNEConnections()) {
-            connection->drawGL(s);
+}
+
+
+void
+GNEJunction::drawJunctionName(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d) const {
+    // draw name and ID
+    if (d <= GUIVisualizationSettings::Detail::Names) {
+        drawName(myNBNode->getPosition(), s.scale, s.junctionID);
+        if (s.junctionName.show(this) && myNBNode->getName() != "") {
+            GLHelper::drawTextSettings(s.junctionName, myNBNode->getName(), myNBNode->getPosition(), s.scale, s.angle);
         }
     }
-    // draw child demand elements
-    for (const auto& demandElement : getChildDemandElements()) {
-        if (!demandElement->getTagProperty().isPlacedInRTree()) {
+}
+
+
+void
+GNEJunction::drawJunctionChildren(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d) const {
+    // check if draw junction elements
+    if (s.drawForViewObjectsHandler || (d <= GUIVisualizationSettings::Detail::JunctionElement)) {
+        // draw crossings
+        for (const auto& crossing : myGNECrossings) {
+            crossing->drawGL(s);
+        }
+        // draw walking areas
+        for (const auto& walkingArea : myGNEWalkingAreas) {
+            walkingArea->drawGL(s);
+        }
+        // draw internalLanes
+        for (const auto& internalLanes : myInternalLanes) {
+            internalLanes->drawGL(s);
+        }
+        // draw connections
+        for (const auto& incomingEdge : myGNEIncomingEdges) {
+            for (const auto& connection : incomingEdge->getGNEConnections()) {
+                connection->drawGL(s);
+            }
+        }
+        // draw child demand elements
+        for (const auto& demandElement : getChildDemandElements()) {
             demandElement->drawGL(s);
+        }
+        // draw child demand elements
+        for (const auto& demandElement : getChildDemandElements()) {
+            demandElement->drawGL(s);
+        }
+        // draw path additional elements
+        myNet->getPathManager()->drawJunctionPathElements(s, this);
+    }
+}
+
+
+void
+GNEJunction::calculateJunctioncontour(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d,
+                                      const double exaggeration, const bool drawBubble) const {
+    // if we're selecting using a boundary, first don't calculate contour bt check if edge boundary is within selection boundary
+    if (gViewObjectsHandler.getSelectionBoundary().isInitialised() && gViewObjectsHandler.getSelectionBoundary().contains(myJunctionBoundary)) {
+        // simply add object in ViewObjectsHandler with full boundary
+        gViewObjectsHandler.addElementUnderCursor(this, false, true);
+    } else {
+        // always calculate for shape
+        myNetworkElementContour.calculateContourClosedShape(s, d, this, myNBNode->getShape(), exaggeration);
+        // check if calculate contour for bubble
+        if (drawBubble) {
+            myCircleContour.calculateContourCircleShape(s, d, this, myNBNode->getCenter(), s.neteditSizeSettings.junctionBubbleRadius, exaggeration);
+        }
+        // check geometry points if we're editing shape
+        if (myShapeEdited) {
+            myNetworkElementContour.calculateContourAllGeometryPoints(s, d, this, myNBNode->getShape(), s.neteditSizeSettings.connectionGeometryPointRadius,
+                                                                      exaggeration, true);
         }
     }
 }
@@ -1824,6 +1894,8 @@ GNEJunction::setAttribute(SumoXMLAttr key, const std::string& value) {
 
 void
 GNEJunction::setMoveShape(const GNEMoveResult& moveResult) {
+    // clear contour
+    myNetworkElementContour.clearContour();
     // set new position in NBNode without updating grid
     if (isShapeEdited()) {
         // set new shape
@@ -1844,11 +1916,9 @@ GNEJunction::setMoveShape(const GNEMoveResult& moveResult) {
 
 void
 GNEJunction::commitMoveShape(const GNEMoveResult& moveResult, GNEUndoList* undoList) {
-    // update objects in the current junction position
-    myNet->getViewNet()->updateObjectsUnderCursor(moveResult.shapeToUpdate.front());
     // check if there is another junction in the same position
     GNEJunction* secondJunction = nullptr;
-    const auto& clickedJunctions = myNet->getViewNet()->getObjectsUnderCursor().getClickedJunctions();
+    const auto& clickedJunctions = myNet->getViewNet()->getViewObjectsSelector().getJunctions();
     for (auto it = clickedJunctions.begin(); (it != clickedJunctions.end()) && (secondJunction == nullptr); it++) {
         if (*it != this) {
             secondJunction = *it;

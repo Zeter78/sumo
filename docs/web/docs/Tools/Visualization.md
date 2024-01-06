@@ -298,7 +298,7 @@ plotXMLAttributes.py tripinfos.xml tripinfos2.xml -x timeLoss -y @COUNT -i @NONE
 
 ## plot_trajectories.py
 
-Create plot of all trajectories in a given **--fcd-output** file. This tool in particular is located in {{SUMO}}/tools.
+Create plot of all trajectories obtained from a file generated through [--fcd-output](../Simulation/Output/FCDOutput.md). This tool in particular is located in {{SUMO}}/tools.
 
 Example use:
 
@@ -745,6 +745,22 @@ name/value-pairs are visualised as a bar chart.
 | **--vertical**                    | Draws vertical bars (default are horizontal bars)                       |
 | **--no-labels**                   | Does not plot the labels                                                |
 | **-v**<br>**--verbose**               | If set, the progress is printed on the screen                           |
+
+## macrOutput.py
+
+This tool will plot EdgeData output as fundamental diagram graphs (volume-density, speed-density and volume-speed relations, each edge and lane-based).
+This requires the EdgeData input file to have interval data with **sampledSeconds**, **density**, **laneDensity** and **speed** attributes. The tool supports the 
+[common options](#common_options). The output is interpreted as a directory rather than a file, though. The output file names are given as:
+
+- Edge_vk.png (speed-density relation)
+- Edge_qk.png (volume-density relation)
+- Edge_qv.png (volume-speed relation)
+- Lane_vk.png (speed-density relation)
+- Lane_qk.png (volume-density relation)
+- Lane_qv.png (volume-speed relation)
+
+Example call: `python macrOutput.py edgeData.xml`
+
 
 ## common options
 

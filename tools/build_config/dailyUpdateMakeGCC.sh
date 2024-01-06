@@ -1,6 +1,6 @@
 #!/bin/bash
 # Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-# Copyright (C) 2008-2023 German Aerospace Center (DLR) and others.
+# Copyright (C) 2008-2024 German Aerospace Center (DLR) and others.
 # This program and the accompanying materials are made available under the
 # terms of the Eclipse Public License 2.0 which is available at
 # https://www.eclipse.org/legal/epl-2.0/
@@ -151,7 +151,6 @@ if test ${FILEPREFIX: -2} == "M1"; then
 fi
 # Linux x64 wheels
 if test ${FILEPREFIX} == "gcc4_64"; then
-  mv dist dist_native  # just as backup
-  docker run --rm -v $PWD:/opt/sumo --workdir /opt/sumo manylinux2014_x64 tools/build_config/build_wheels.sh $HTTPS_PROXY v0.13.0 > $WHEELLOG 2>&1
-  cp build_config/$FILEPREFIX/*.whl wheelhouse
+  docker run --rm -v $PWD:/opt/sumo --workdir /opt/sumo manylinux2014_x64 tools/build_config/build_wheels.sh $HTTPS_PROXY v1.0.5 > $WHEELLOG 2>&1
+  cp build/$FILEPREFIX/*.whl wheelhouse
 fi

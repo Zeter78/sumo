@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -1097,7 +1097,9 @@ GNEDemandElementPlan::drawPlanGL(const bool drawPlan, const GUIVisualizationSett
     // get plan geometry
     auto& planGeometry = myPlanElement->myDemandElementGeometry;
     // draw relations between TAZs
-    if (drawPlan && drawPlanZoom(s) && (planGeometry.getShape().size() > 0)) {
+    if (drawPlan && (planGeometry.getShape().size() > 0)) {
+        // get detail level
+        const auto d = s.getDetailLevel(1);
         // get viewNet
         auto viewNet = myPlanElement->getNet()->getViewNet();
         // get inspected attribute carriers
@@ -1108,31 +1110,27 @@ GNEDemandElementPlan::drawPlanGL(const bool drawPlan, const GUIVisualizationSett
         const bool duplicateWidth = (planInspected == myPlanElement) || (planInspected == planParent);
         // calculate path width
         const double pathWidth = 0.25 * (duplicateWidth ? 2 : 1);
-        // check if boundary has to be drawn
-        if (s.drawBoundaries) {
-            GLHelper::drawBoundary(myPlanElement->getCenteringBoundary());
+        // draw geometry only if we'rent in drawForObjectUnderCursor mode
+        if (!s.drawForViewObjectsHandler) {
+            // push matrix
+            GLHelper::pushMatrix();
+            // translate to front
+            viewNet->drawTranslateFrontAttributeCarrier(myPlanElement, GLO_TAZ + 1);
+            // set color
+            GLHelper::setColor(myPlanElement->drawUsingSelectColor() ? planSelectedColor : planColor);
+            // draw line
+            GUIGeometry::drawGeometry(d, planGeometry, pathWidth);
+            GLHelper::drawTriangleAtEnd(
+                *(planGeometry.getShape().end() - 2),
+                *(planGeometry.getShape().end() - 1),
+                0.5, 0.5, 0.5);
+            // pop matrix
+            GLHelper::popMatrix();
+            // draw dotted contour
+            myPlanContour.drawDottedContours(s, d, myPlanElement, s.dottedContourSettings.segmentWidth, true);
         }
-        // push GL ID
-        GLHelper::pushName(myPlanElement->getGlID());
-        // push matrix
-        GLHelper::pushMatrix();
-        // translate to front
-        viewNet->drawTranslateFrontAttributeCarrier(myPlanElement, GLO_TAZ + 1);
-        // set color
-        GLHelper::setColor(myPlanElement->drawUsingSelectColor() ? planSelectedColor : planColor);
-        // draw line
-        GUIGeometry::drawGeometry(s, viewNet->getPositionInformation(), planGeometry, pathWidth);
-        GLHelper::drawTriangleAtEnd(
-            *(planGeometry.getShape().end() - 2),
-            *(planGeometry.getShape().end() - 1),
-            0.5, 0.5, 0.5);
-        // pop matrix
-        GLHelper::popMatrix();
-        // pop name
-        GLHelper::popName();
-        // draw dotted geometry
-        myPlanElement->getContour().drawDottedContourExtruded(s, planGeometry.getShape(), pathWidth, 1, true, true,
-                s.dottedContourSettings.segmentWidth);
+        // calculate contour and draw dotted geometry
+        myPlanContour.calculateContourExtrudedShape(s, d, myPlanElement, planGeometry.getShape(), pathWidth, 1, true, true, 0);
     }
     // check if draw plan parent
     if (planParent->getPreviousChildDemandElement(myPlanElement) == nullptr) {
@@ -1148,10 +1146,10 @@ GNEDemandElementPlan::drawPlanLanePartial(const bool drawPlan, const GUIVisualiz
     auto viewNet = myPlanElement->getNet()->getViewNet();
     // get plan parent
     const GNEDemandElement* planParent = myPlanElement->getParentDemandElements().front();
-    // check if this is a dotted element
-    const bool dottedElement = myPlanElement->checkDrawContour();
     // check if draw plan element can be drawn
-    if (drawPlan && drawPlanZoom(s) && segment->getLane() && myPlanElement->getNet()->getPathManager()->getPathDraw()->checkDrawPathGeometry(s, dottedElement, segment->getLane(), myPlanElement->getTagProperty().getTag())) {
+    if (drawPlan && segment->getLane() && myPlanElement->getNet()->getPathManager()->getPathDraw()->checkDrawPathGeometry(s, segment->getLane(), myPlanElement->getTagProperty().getTag())) {
+        // get detail level
+        const auto d = s.getDetailLevel(1);
         // get inspected attribute carriers
         const auto& inspectedACs = viewNet->getInspectedAttributeCarriers();
         // get inspected plan
@@ -1184,40 +1182,35 @@ GNEDemandElementPlan::drawPlanLanePartial(const bool drawPlan, const GUIVisualiz
         } else {
             planGeometry = segment->getLane()->getLaneGeometry();
         }
-        // Start drawing adding an gl identificator
-        GLHelper::pushName(myPlanElement->getGlID());
-        // Add a draw matrix
-        GLHelper::pushMatrix();
-        // Start with the drawing of the area traslating matrix to origin
-        viewNet->drawTranslateFrontAttributeCarrier(myPlanElement, myPlanElement->getType(), offsetFront);
-        // Set color
-        GLHelper::setColor(myPlanElement->drawUsingSelectColor() ? planSelectedColor : planColor);
-        // draw geometry
-        GUIGeometry::drawGeometry(s, viewNet->getPositionInformation(), planGeometry, pathWidth);
-        // draw red arrows
-        drawFromArrow(s, segment->getLane(), segment, dottedElement);
-        drawToArrow(s, segment->getLane(), segment, dottedElement);
-        // draw end position
-        drawEndPosition(s, segment, duplicateWidth);
-        // Pop last matrix
-        GLHelper::popMatrix();
-        // Draw name if isn't being drawn for selecting
-        if (!s.drawForRectangleSelection) {
+        // draw geometry only if we'rent in drawForObjectUnderCursor mode
+        if (!s.drawForViewObjectsHandler) {
+            // Add a draw matrix
+            GLHelper::pushMatrix();
+            // Start with the drawing of the area traslating matrix to origin
+            viewNet->drawTranslateFrontAttributeCarrier(myPlanElement, myPlanElement->getType(), offsetFront);
+            // Set color
+            GLHelper::setColor(myPlanElement->drawUsingSelectColor() ? planSelectedColor : planColor);
+            // draw geometry
+            GUIGeometry::drawGeometry(d, planGeometry, pathWidth);
+            // draw red arrows
+            drawFromArrow(s, segment->getLane(), segment);
+            drawToArrow(s, segment->getLane(), segment);
+            // draw end position
+            drawEndPosition(s, d, segment, duplicateWidth);
+            // Pop last matrix
+            GLHelper::popMatrix();
+            // Draw name if isn't being drawn for selecting
             myPlanElement->drawName(myPlanElement->getCenteringBoundary().getCenter(), s.scale, s.addName);
+            // draw dotted contour
+            segment->getContour()->drawDottedContours(s, d, myPlanElement, s.dottedContourSettings.segmentWidth, true);
         }
-        // Pop name
-        GLHelper::popName();
         // declare trim geometry to draw
         const auto shape = (segment->isFirstSegment() || segment->isLastSegment()) ? planGeometry.getShape() : segment->getLane()->getLaneShape();
-        // check if mouse is over element
-        myPlanElement->mouseWithinGeometry(shape, pathWidth);
-        // draw dotted geometry
+        // calculate contour and draw dotted geometry
         if (duplicateWidth) {
-            myPlanElement->getContour().drawDottedContourExtruded(s, shape, pathWidth, 1, true, true,
-                    s.dottedContourSettings.segmentWidth);
+            segment->getContour()->calculateContourExtrudedShape(s, d, myPlanElement, shape, pathWidth, 1, true, true, 0);
         } else {
-            myPlanElement->getContour().drawDottedContourExtruded(s, shape, pathWidth, 1, true, true,
-                    s.dottedContourSettings.segmentWidthSmall);
+            segment->getContour()->calculateContourExtrudedShape(s, d, myPlanElement, shape, pathWidth, 1, true, true, 0);
         }
     }
     // check if draw plan parent
@@ -1235,8 +1228,9 @@ GNEDemandElementPlan::drawPlanJunctionPartial(const bool drawPlan, const GUIVisu
     // get plan parent
     const GNEDemandElement* planParent = myPlanElement->getParentDemandElements().front();
     // check if draw plan elements can be drawn
-    if (drawPlan && drawPlanZoom(s) &&
-        myPlanElement->getNet()->getPathManager()->getPathDraw()->checkDrawPathGeometry(s, myPlanElement->checkDrawContour(), segment, myPlanElement->getTagProperty().getTag())) {
+    if (drawPlan && myPlanElement->getNet()->getPathManager()->getPathDraw()->checkDrawPathGeometry(s, segment, myPlanElement->getTagProperty().getTag())) {
+        // get detail level
+        const auto d = s.getDetailLevel(1);
         // get inspected attribute carriers
         const auto& inspectedACs = viewNet->getInspectedAttributeCarriers();
         // get inspected plan
@@ -1245,62 +1239,63 @@ GNEDemandElementPlan::drawPlanJunctionPartial(const bool drawPlan, const GUIVisu
         const bool duplicateWidth = (planInspected == myPlanElement) || (planInspected == planParent);
         // calculate path width
         const double pathWidth = s.addSize.getExaggeration(s, segment->getPreviousLane()) * planWidth * (duplicateWidth ? 2 : 1);
-        // Start drawing adding an gl identificator
-        GLHelper::pushName(myPlanElement->getGlID());
-        // push a draw matrix
-        GLHelper::pushMatrix();
-        // Start with the drawing of the area traslating matrix to origin
-        viewNet->drawTranslateFrontAttributeCarrier(myPlanElement, myPlanElement->getType(), offsetFront);
-        // Set plan color
-        GLHelper::setColor(myPlanElement->drawUsingSelectColor() ? planSelectedColor : planColor);
-        // check if draw lane2lane connection or a red line
-        if (segment->getPreviousLane() && segment->getNextLane()) {
-            if (segment->getPreviousLane()->getLane2laneConnections().exist(segment->getNextLane())) {
-                // obtain lane2lane geometry
-                const GUIGeometry& lane2laneGeometry = segment->getPreviousLane()->getLane2laneConnections().getLane2laneGeometry(segment->getNextLane());
-                // draw lane2lane
-                GUIGeometry::drawGeometry(s, viewNet->getPositionInformation(), lane2laneGeometry, pathWidth);
-            } else {
-                // Set invalid plan color
-                GLHelper::setColor(RGBColor::RED);
-                // draw line between end of first shape and first position of second shape
-                GLHelper::drawBoxLines({segment->getPreviousLane()->getLaneShape().back(), segment->getNextLane()->getLaneShape().front()}, (0.5 * pathWidth));
+        // draw geometry only if we'rent in drawForObjectUnderCursor mode
+        if (!s.drawForViewObjectsHandler) {
+            // push a draw matrix
+            GLHelper::pushMatrix();
+            // Start with the drawing of the area traslating matrix to origin
+            viewNet->drawTranslateFrontAttributeCarrier(myPlanElement, myPlanElement->getType(), offsetFront);
+            // Set plan color
+            GLHelper::setColor(myPlanElement->drawUsingSelectColor() ? planSelectedColor : planColor);
+            // check if draw lane2lane connection or a red line
+            if (segment->getPreviousLane() && segment->getNextLane()) {
+                if (segment->getPreviousLane()->getLane2laneConnections().exist(segment->getNextLane())) {
+                    // obtain lane2lane geometry
+                    const GUIGeometry& lane2laneGeometry = segment->getPreviousLane()->getLane2laneConnections().getLane2laneGeometry(segment->getNextLane());
+                    // draw lane2lane
+                    GUIGeometry::drawGeometry(d, lane2laneGeometry, pathWidth);
+                } else {
+                    // Set invalid plan color
+                    GLHelper::setColor(RGBColor::RED);
+                    // draw line between end of first shape and first position of second shape
+                    GLHelper::drawBoxLines({segment->getPreviousLane()->getLaneShape().back(), segment->getNextLane()->getLaneShape().front()}, (0.5 * pathWidth));
+                }
+            } else if (segment->getPreviousLane()) {
+                // draw line between center of junction and last lane shape
+                GLHelper::drawBoxLines({segment->getPreviousLane()->getLaneShape().back(), myPlanElement->getParentJunctions().back()->getPositionInView()}, pathWidth);
+            } else if (segment->getNextLane()) {
+                // draw line between center of junction and first lane shape
+                GLHelper::drawBoxLines({myPlanElement->getParentJunctions().front()->getPositionInView(), segment->getNextLane()->getLaneShape().front()}, pathWidth);
             }
-        } else if (segment->getPreviousLane()) {
-            // draw line between center of junction and last lane shape
-            GLHelper::drawBoxLines({segment->getPreviousLane()->getLaneShape().back(), myPlanElement->getParentJunctions().back()->getPositionInView()}, pathWidth);
-        } else if (segment->getNextLane()) {
-            // draw line between center of junction and first lane shape
-            GLHelper::drawBoxLines({myPlanElement->getParentJunctions().front()->getPositionInView(), segment->getNextLane()->getLaneShape().front()}, pathWidth);
+            // Pop last matrix
+            GLHelper::popMatrix();
+            // draw lock icon
+            GNEViewNetHelper::LockIcon::drawLockIcon(d, myPlanElement, myPlanElement->getType(), myPlanElement->getPositionInView(), 0.5);
+            // draw dotted contour
+            if (duplicateWidth) {
+                segment->getContour()->drawDottedContours(s, d, myPlanElement, s.dottedContourSettings.segmentWidth, true);
+            } else {
+                segment->getContour()->drawDottedContours(s, d, myPlanElement, s.dottedContourSettings.segmentWidthSmall, true);
+            }
         }
-        // Pop last matrix
-        GLHelper::popMatrix();
-        // Pop name
-        GLHelper::popName();
-        // draw lock icon
-        GNEViewNetHelper::LockIcon::drawLockIcon(myPlanElement, myPlanElement->getType(), myPlanElement->getPositionInView(), 0.5);
         // check if shape dotted contour has to be drawn
         if (segment->getPreviousLane() && segment->getNextLane()) {
             if (segment->getPreviousLane()->getLane2laneConnections().exist(segment->getNextLane())) {
                 // get shape
                 const auto& shape = segment->getPreviousLane()->getLane2laneConnections().getLane2laneGeometry(segment->getNextLane()).getShape();
-                // check if mouse is over element
-                myPlanElement->mouseWithinGeometry(shape, pathWidth);
-                // draw dotted geometry
+                // calculate contour and draw dotted geometry
                 if (duplicateWidth) {
-                    myPlanElement->getContour().drawDottedContourExtruded(s, shape, pathWidth, 1, true, true,
-                            s.dottedContourSettings.segmentWidth);
+                    segment->getContour()->calculateContourExtrudedShape(s, d, myPlanElement, shape, pathWidth, 1, true, true, 0);
                 } else {
-                    myPlanElement->getContour().drawDottedContourExtruded(s, shape, pathWidth, 1, true, true,
-                            s.dottedContourSettings.segmentWidthSmall);
+                    segment->getContour()->calculateContourExtrudedShape(s, d, myPlanElement, shape, pathWidth, 1, true, true, 0);
                 }
             }
         } else if (segment->getPreviousLane()) {
-            myPlanElement->getContour().drawDottedContourExtruded(s, {segment->getPreviousLane()->getLaneShape().back(), myPlanElement->getParentJunctions().back()->getPositionInView()},
-                    pathWidth, 1, true, true, s.dottedContourSettings.segmentWidth);
+            segment->getContour()->calculateContourExtrudedShape(s, d, myPlanElement, {segment->getPreviousLane()->getLaneShape().back(), myPlanElement->getParentJunctions().back()->getPositionInView()},
+                    pathWidth, 1, true, true, 0);
         } else if (segment->getNextLane()) {
-            myPlanElement->getContour().drawDottedContourExtruded(s, {myPlanElement->getParentJunctions().front()->getPositionInView(), segment->getNextLane()->getLaneShape().front()},
-                    pathWidth, 1, true, true, s.dottedContourSettings.segmentWidth);
+            segment->getContour()->calculateContourExtrudedShape(s, d, myPlanElement, {myPlanElement->getParentJunctions().front()->getPositionInView(), segment->getNextLane()->getLaneShape().front()},
+                    pathWidth, 1, true, true, 0);
         }
     }
     // check if draw plan parent
@@ -1376,19 +1371,8 @@ GNEDemandElementPlan::getPersonPlanProblem() const {
 }
 
 
-bool
-GNEDemandElementPlan::drawPlanZoom(const GUIVisualizationSettings& s) const {
-    if (s.drawForPositionSelection || s.drawForRectangleSelection) {
-        return true;
-    } else {
-        return s.drawDetail(s.detailSettings.plans, 1);
-    }
-}
-
-
 void
-GNEDemandElementPlan::drawFromArrow(const GUIVisualizationSettings& s, const GNELane* lane, const GNEPathManager::Segment* segment,
-                                    const bool dottedElement) const {
+GNEDemandElementPlan::drawFromArrow(const GUIVisualizationSettings& s, const GNELane* lane, const GNEPathManager::Segment* segment) const {
     // draw ifcurrent amd next segment is placed over lanes
     if (segment->getNextLane()) {
         // get firstPosition (last position of current lane shape)
@@ -1400,7 +1384,7 @@ GNEDemandElementPlan::drawFromArrow(const GUIVisualizationSettings& s, const GNE
         // move front
         glTranslated(0, 0, 4);
         // draw child line
-        GUIGeometry::drawChildLine(s, from, to, RGBColor::RED, dottedElement || myPlanElement->isAttributeCarrierSelected(), .05);
+        GUIGeometry::drawChildLine(s, from, to, RGBColor::RED, myPlanElement->isAttributeCarrierSelected(), .05);
         // pop draw matrix
         GLHelper::popMatrix();
     }
@@ -1408,8 +1392,7 @@ GNEDemandElementPlan::drawFromArrow(const GUIVisualizationSettings& s, const GNE
 
 
 void
-GNEDemandElementPlan::drawToArrow(const GUIVisualizationSettings& s, const GNELane* lane, const GNEPathManager::Segment* segment,
-                                  const bool dottedElement) const {
+GNEDemandElementPlan::drawToArrow(const GUIVisualizationSettings& s, const GNELane* lane, const GNEPathManager::Segment* segment) const {
     // draw the line if previos segment and current segment is placed over lanes
     if (segment->getPreviousLane()) {
         // get firstPosition (last position of current lane shape)
@@ -1421,7 +1404,7 @@ GNEDemandElementPlan::drawToArrow(const GUIVisualizationSettings& s, const GNELa
         // move front
         glTranslated(0, 0, 4);
         // draw child line
-        GUIGeometry::drawChildLine(s, from, to, RGBColor::RED, dottedElement || myPlanElement->isAttributeCarrierSelected(), .05);
+        GUIGeometry::drawChildLine(s, from, to, RGBColor::RED, myPlanElement->isAttributeCarrierSelected(), .05);
         // pop draw matrix
         GLHelper::popMatrix();
     }
@@ -1429,7 +1412,7 @@ GNEDemandElementPlan::drawToArrow(const GUIVisualizationSettings& s, const GNELa
 
 
 void
-GNEDemandElementPlan::drawEndPosition(const GUIVisualizationSettings& s, const GNEPathManager::Segment* segment, const bool duplicateWidth) const {
+GNEDemandElementPlan::drawEndPosition(const GUIVisualizationSettings& s, const GUIVisualizationSettings::Detail d, const GNEPathManager::Segment* segment, const bool duplicateWidth) const {
     // check if myPlanElement is the last segment
     if (segment->isLastSegment()) {
         // calculate circle width
@@ -1445,7 +1428,7 @@ GNEDemandElementPlan::drawEndPosition(const GUIVisualizationSettings& s, const G
             // translate to pos and move to
             glTranslated(geometryEndPos.x(), geometryEndPos.y(), 4);
             // resolution of drawn circle depending of the zoom (To improve smothness)
-            GLHelper::drawFilledCircle(circleWidth, s.getCircleResolution());
+            GLHelper::drawFilledCircleDetailled(d, circleWidth);
             // pop draw matrix
             GLHelper::popMatrix();
         }

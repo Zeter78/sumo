@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2012-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2012-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -75,7 +75,7 @@ public:
     static double getElectricityConsumption(const std::string& vehID);
     static int getPersonNumber(const std::string& vehID);
     static std::vector<std::string> getPersonIDList(const std::string& vehID);
-    static std::pair<std::string, double> getLeader(const std::string& vehID, double dist = 0.);
+    static std::pair<std::string, double> getLeader(const std::string& vehID, double dist = 100.);
     static std::pair<std::string, double> getFollower(const std::string& vehID, double dist = 0.);
     static std::vector<libsumo::TraCIJunctionFoe> getJunctionFoes(const std::string& vehID, double dist = 0.);
     static double getWaitingTime(const std::string& vehID);

@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2014-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2014-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -139,6 +139,11 @@ public:
 
     /// @brief whether movements on intersections are modelled
     virtual bool usingInternalLanes() = 0;
+
+    /// @brief whether travel times and distances can reliably be calculated from the network alone
+    virtual bool usingShortcuts() {
+        return false;
+    }
 
     /// @brief return the number of active objects
     virtual int getActiveNumber() = 0;

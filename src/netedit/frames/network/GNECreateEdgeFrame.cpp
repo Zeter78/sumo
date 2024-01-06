@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -109,7 +109,7 @@ GNECreateEdgeFrame::EdgeTypeSelector::EdgeTypeSelector(GNECreateEdgeFrame* creat
     myCreateDefaultEdgeType->setCheck(TRUE);
     // check if enable disable pedestrians
     for (const auto& junction : createEdgeFrameParent->getViewNet()->getNet()->getAttributeCarriers()->getJunctions()) {
-        if (junction.second->getNBNode()->getCrossings().size() > 0) {
+        if (junction.second.second->getNBNode()->getCrossings().size() > 0) {
             enableCheckBoxDisablePedestrians();
         }
     }
@@ -666,7 +666,6 @@ GNECreateEdgeFrame::Legend::~Legend() {}
 
 GNECreateEdgeFrame::GNECreateEdgeFrame(GNEViewParent* viewParent, GNEViewNet* viewNet) :
     GNEFrame(viewParent, viewNet, TL("Create Edge")),
-    myObjectsUnderSnappedCursor(viewNet),
     myJunctionSource(nullptr) {
     // create custom edge selector
     myEdgeTypeSelector = new EdgeTypeSelector(this);
@@ -685,7 +684,7 @@ GNECreateEdgeFrame::~GNECreateEdgeFrame() {}
 
 
 void
-GNECreateEdgeFrame::processClick(const Position& clickedPosition, const GNEViewNetHelper::ObjectsUnderCursor& objectsUnderCursor,
+GNECreateEdgeFrame::processClick(const Position& clickedPosition, const GNEViewNetHelper::ViewObjectsSelector& viewObjects,
                                  const bool oppositeEdge, const bool chainEdge) {
     // first check if there is an edge template, an edge type (default or custom)
     if (!myEdgeTypeSelector->useDefaultEdgeType() && !myEdgeTypeSelector->useDefaultEdgeTypeShort() &&
@@ -697,12 +696,7 @@ GNECreateEdgeFrame::processClick(const Position& clickedPosition, const GNEViewN
         WRITE_WARNING(TL("Invalid lane attributes"));
     } else {
         // obtain junction depending of gridEnabled
-        GNEJunction* junction = nullptr;
-        if (objectsUnderCursor.getJunctionFront()) {
-            junction = objectsUnderCursor.getJunctionFront();
-        } else if (myObjectsUnderSnappedCursor.getJunctionFront()) {
-            junction = myObjectsUnderSnappedCursor.getJunctionFront();
-        }
+        GNEJunction* junction = viewObjects.getJunctionFront();
         // begin undo list
         if (!myViewNet->getUndoList()->hasCommandGroup()) {
             myViewNet->getUndoList()->begin(GUIIcon::EDGE, TL("create new edge"));
@@ -838,12 +832,6 @@ GNECreateEdgeFrame::abortEdgeCreation() {
 const GNEJunction*
 GNECreateEdgeFrame::getJunctionSource() const {
     return myJunctionSource;
-}
-
-
-void
-GNECreateEdgeFrame::updateObjectsUnderSnappedCursor(const std::vector<GUIGlObject*>& GUIGlObjects) {
-    myObjectsUnderSnappedCursor.updateObjectUnderCursor(GUIGlObjects);
 }
 
 

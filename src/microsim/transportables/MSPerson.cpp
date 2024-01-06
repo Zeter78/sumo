@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -46,6 +46,12 @@
 #include "MSStageTrip.h"
 #include "MSPerson.h"
 #include "MSPModel.h"
+
+// ===========================================================================
+// static member definition
+// ===========================================================================
+bool MSPerson::MSPersonStage_Walking::myWarnedInvalidTripinfo = false;
+
 
 // ===========================================================================
 // method definitions
@@ -117,6 +123,18 @@ MSPerson::MSPersonStage_Walking::proceed(MSNet* net, MSTransportable* person, SU
     if (previous->getEdgePos(now) >= 0 && previous->getEdge() == *myRouteStep) {
         // we need to adapt to the arrival position of the vehicle unless we have an explicit access
         myDepartPos = previous->getEdgePos(now);
+        if (previous->getStageType() == MSStageType::ACCESS) {
+            const Position& lastPos = previous->getPosition(now);
+            // making a wild guess on where we actually want to depart laterally
+            const double possibleDepartPosLat = lastPos.distanceTo(previous->getEdgePosition(previous->getEdge(), myDepartPos, 0.));
+            const Position& newPos = previous->getEdgePosition(previous->getEdge(), myDepartPos, -possibleDepartPosLat); // Minus sign is here for legacy reasons.
+            if (lastPos.almostSame(newPos)) {
+                myDepartPosLat = possibleDepartPosLat;
+            } else if (lastPos.almostSame(previous->getEdgePosition(previous->getEdge(), myDepartPos, possibleDepartPosLat))) {
+                // maybe the other side of the street
+                myDepartPosLat = -possibleDepartPosLat;
+            }
+        }
         if (myWalkingTime > 0) {
             mySpeed = computeAverageSpeed();
         }
@@ -127,13 +145,9 @@ MSPerson::MSPersonStage_Walking::proceed(MSNet* net, MSTransportable* person, SU
         pControl.erase(person);
         return;
     }
-    const MSLane* const lane = getSidewalk<MSEdge, MSLane>(getEdge());
-    if (lane != nullptr) {
-        for (MSMoveReminder* rem : lane->getMoveReminders()) {
-            if (rem->notifyEnter(*person, MSMoveReminder::NOTIFICATION_DEPARTED, lane)) {
-                myMoveReminders.push_back(rem);
-            }
-        }
+    if (previous->getStageType() != MSStageType::WALKING || previous->getEdge() != getEdge()) {
+        // we only need new move reminders if we are walking a different edge (else it is probably a rerouting)
+        activateEntryReminders(person, true);
     }
     if (OptionsCont::getOptions().getBool("vehroute-output.exit-times")) {
         myExitTimes = new std::vector<SUMOTime>();
@@ -255,6 +269,10 @@ MSPerson::MSPersonStage_Walking::walkDistance(bool partial) const {
 
 void
 MSPerson::MSPersonStage_Walking::tripInfoOutput(OutputDevice& os, const MSTransportable* const person) const {
+    if (!myWarnedInvalidTripinfo && MSNet::getInstance()->getPersonControl().getMovementModel()->usingShortcuts()) {
+        WRITE_WARNING(TL("The pedestrian model uses infrastructure which is not in the network, timeLoss and routeLength may be invalid."));
+        myWarnedInvalidTripinfo = true;
+    }
     const double distance = walkDistance(true);
     const double maxSpeed = getMaxSpeed(person);
     const SUMOTime duration = myArrived - myDeparted;
@@ -369,7 +387,7 @@ MSPerson::MSPersonStage_Walking::moveToNextEdge(MSTransportable* person, SUMOTim
 void
 MSPerson::MSPersonStage_Walking::activateLeaveReminders(MSTransportable* person, const MSLane* lane, double lastPos, SUMOTime t, bool arrived) {
     MSMoveReminder::Notification notification = arrived ? MSMoveReminder::NOTIFICATION_ARRIVED : MSMoveReminder::NOTIFICATION_JUNCTION;
-    for (MSMoveReminder* rem : myMoveReminders) {
+    for (MSMoveReminder* const rem : myMoveReminders) {
         rem->updateDetector(*person, 0.0, lane->getLength(), myLastEdgeEntryTime, t, t, true);
         rem->notifyLeave(*person, lastPos, notification);
     }
@@ -377,12 +395,11 @@ MSPerson::MSPersonStage_Walking::activateLeaveReminders(MSTransportable* person,
 
 
 void
-MSPerson::MSPersonStage_Walking::activateEntryReminders(MSTransportable* person) {
-    const MSLane* nextLane = getSidewalk<MSEdge, MSLane>(getEdge());
+MSPerson::MSPersonStage_Walking::activateEntryReminders(MSTransportable* person, const bool isDepart) {
+    const MSLane* const nextLane = getSidewalk<MSEdge, MSLane>(getEdge());
     if (nextLane != nullptr) {
-        for (MSMoveReminder* rem : nextLane->getMoveReminders()) {
-            if (rem->notifyEnter(*person, MSMoveReminder::NOTIFICATION_JUNCTION, nextLane)) {
-                ;
+        for (MSMoveReminder* const rem : nextLane->getMoveReminders()) {
+            if (rem->notifyEnter(*person, isDepart ? MSMoveReminder::NOTIFICATION_DEPARTED : MSMoveReminder::NOTIFICATION_JUNCTION, nextLane)) {
                 myMoveReminders.push_back(rem);
             }
         }
@@ -456,6 +473,7 @@ void
 MSPerson::MSPersonStage_Access::proceed(MSNet* net, MSTransportable* person, SUMOTime now, MSStage* /* previous */) {
     myDeparted = now;
     myEstimatedArrival = now + TIME2STEPS(myDist / person->getMaxSpeed());
+    // TODO myEstimatedArrival is not a multiple of DELTA_T here. This might give a problem because the destination position will not be reached precisely
     net->getBeginOfTimestepEvents()->addEvent(new ProceedCmd(person, &myDestinationStop->getLane().getEdge()), myEstimatedArrival);
     net->getPersonControl().startedAccess();
     myDestinationStop->getLane().getEdge().addTransportable(person);
@@ -549,10 +567,20 @@ MSPerson::checkAccess(const MSStage* const prior, const bool waitAtStop) {
                                                     prevStop->getLane().geometryPositionAtOffset(arrivalAtBs));
             } else {
                 const double startPos = prior->getStageType() == MSStageType::TRIP ? prior->getEdgePos(0) : prior->getArrivalPos();
-                const Position& p = prevStop->getLane().geometryPositionAtOffset(startPos);
-                const double arrivalPos = access->useDoors ? lane->getShape().nearest_offset_to_point2D(p) : access->endPos;
+                const Position& trainExit = prevStop->getLane().geometryPositionAtOffset(startPos);
+                const double arrivalPos = access->useDoors ? lane->getShape().nearest_offset_to_point2D(trainExit) : access->endPos;
+                Position platformEntry = lane->geometryPositionAtOffset(arrivalPos);
+                if (access->useDoors) {
+                    // find the closer side of the platform to enter
+                    const double halfWidth = lane->getWidth() / 2. - MAX2(getVehicleType().getLength(), getVehicleType().getWidth()) / 2. - POSITION_EPS;
+                    platformEntry = lane->geometryPositionAtOffset(arrivalPos, halfWidth);
+                    const Position& plat2 = lane->geometryPositionAtOffset(arrivalPos, -halfWidth);
+                    if (trainExit.distanceSquaredTo2D(plat2) < trainExit.distanceSquaredTo2D(platformEntry)) {
+                        platformEntry = plat2;
+                    }
+                }
                 newStage = new MSPersonStage_Access(accessEdge, prevStop, arrivalPos, access->length, true,
-                                                    p, lane->geometryPositionAtOffset(arrivalPos));
+                    trainExit, platformEntry);
             }
             myStep = myPlan->insert(myStep, newStage);
             return true;
@@ -600,7 +628,7 @@ MSPerson::getNextEdgePtr() const {
 
 
 void
-MSPerson::reroute(ConstMSEdgeVector& newEdges, double departPos, int firstIndex, int nextIndex) {
+MSPerson::reroute(const ConstMSEdgeVector& newEdges, double departPos, int firstIndex, int nextIndex) {
     assert(nextIndex > firstIndex);
     //std::cout << SIMTIME << " reroute person " << getID()
     //    << "  newEdges=" << toString(newEdges)

@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -39,7 +39,7 @@
 #include <utils/importio/LineReader.h>
 #include <utils/iodevices/OutputDevice.h>
 #include <utils/gui/settings/GUISettingsHandler.h>
-#include <utils/gui/div/GUIGlobalPostDrawing.h>
+#include <utils/gui/div/GUIGlobalViewObjectsHandler.h>
 
 #include "GUIDialog_EditViewport.h"
 #include "GUIDialog_ViewSettings.h"
@@ -383,7 +383,6 @@ GUIDialog_ViewSettings::onCmdNameChange(FXObject*, FXSelector, void* ptr) {
     myDither->setCheck(mySettings->dither);
     myFPS->setCheck(mySettings->fps);
     myDrawBoundaries->setCheck(mySettings->drawBoundaries);
-    myForceDrawForPositionSelection->setCheck(mySettings->forceDrawForPositionSelection);
     myForceDrawForRectangleSelection->setCheck(mySettings->forceDrawForRectangleSelection);
     myDisableDottedContours->setCheck(mySettings->disableDottedContours);
     myGeometryIndicesPanel->update(mySettings->geometryIndices);
@@ -701,7 +700,6 @@ GUIDialog_ViewSettings::onCmdColorChange(FXObject* sender, FXSelector, void* /*v
     tmpSettings.dither = (myDither->getCheck() != FALSE);
     tmpSettings.fps = (myFPS->getCheck() != FALSE);
     tmpSettings.drawBoundaries = (myDrawBoundaries->getCheck() != FALSE);
-    tmpSettings.forceDrawForPositionSelection = (myForceDrawForPositionSelection->getCheck() != FALSE);
     tmpSettings.forceDrawForRectangleSelection = (myForceDrawForRectangleSelection->getCheck() != FALSE);
     tmpSettings.disableDottedContours = (myDisableDottedContours->getCheck() != FALSE);
     tmpSettings.geometryIndices = myGeometryIndicesPanel->getSettings();
@@ -1669,7 +1667,7 @@ GUIDialog_ViewSettings::SizePanel::update(const GUIVisualizationSizeSettings& se
 long
 GUIDialog_ViewSettings::SizePanel::onCmdSizeChange(FXObject* obj, FXSelector sel, void* ptr) {
     // mark boundaries for recomputing
-    gPostDrawing.recomputeBoundaries = myType;
+    gViewObjectsHandler.recomputeBoundaries = myType;
     // continue as a normal change
     return myDialogViewSettings->onCmdColorChange(obj, sel, ptr);
 }
@@ -2317,9 +2315,6 @@ GUIDialog_ViewSettings::buildOpenGLFrame(FXTabBook* tabbook) {
     FXMatrix* m84 = new FXMatrix(verticalFrame, 1, GUIDesignMatrixViewSettings);
     myDrawBoundaries = new FXCheckButton(m84, TL("Draw boundaries"), this, MID_SIMPLE_VIEW_COLORCHANGE);
     myDrawBoundaries->setCheck(mySettings->drawBoundaries);
-    FXMatrix* m85 = new FXMatrix(verticalFrame, 1, GUIDesignMatrixViewSettings);
-    myForceDrawForPositionSelection = new FXCheckButton(m85, TL("Force draw for position selection"), this, MID_SIMPLE_VIEW_COLORCHANGE);
-    myForceDrawForPositionSelection->setCheck(mySettings->forceDrawForPositionSelection);
     FXMatrix* m86 = new FXMatrix(verticalFrame, 1, GUIDesignMatrixViewSettings);
     myForceDrawForRectangleSelection = new FXCheckButton(m86, TL("Force draw for rectangle selection"), this, MID_SIMPLE_VIEW_COLORCHANGE);
     myForceDrawForRectangleSelection->setCheck(mySettings->forceDrawForRectangleSelection);

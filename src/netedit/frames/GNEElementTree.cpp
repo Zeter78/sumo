@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -301,14 +301,14 @@ GNEElementTree::createPopUpMenu(int X, int Y, GNEAttributeCarrier* clickedAC) {
         // cast all elements
         myClickedJunction = attributeCarriers->retrieveJunction(clickedAC->getID(), false);
         myClickedEdge = attributeCarriers->retrieveEdge(clickedAC->getID(), false);
-        myClickedLane = attributeCarriers->retrieveLane(clickedAC, false);
-        myClickedCrossing = attributeCarriers->retrieveCrossing(clickedAC, false);
-        myClickedConnection = attributeCarriers->retrieveConnection(clickedAC, false);
-        myClickedAdditional = attributeCarriers->retrieveAdditional(clickedAC, false);
-        myClickedDemandElement = attributeCarriers->retrieveDemandElement(clickedAC, false);
-        myClickedDataSet = attributeCarriers->retrieveDataSet(clickedAC, false);
+        myClickedLane = attributeCarriers->retrieveLane(clickedAC->getGUIGlObject(), false);
+        myClickedCrossing = attributeCarriers->retrieveCrossing(clickedAC->getGUIGlObject(), false);
+        myClickedConnection = attributeCarriers->retrieveConnection(clickedAC->getGUIGlObject(), false);
+        myClickedAdditional = attributeCarriers->retrieveAdditional(clickedAC->getGUIGlObject(), false);
+        myClickedDemandElement = attributeCarriers->retrieveDemandElement(clickedAC->getGUIGlObject(), false);
+        myClickedDataSet = attributeCarriers->retrieveDataSet(clickedAC->getID(), false);
         myClickedDataInterval = attributeCarriers->retrieveDataInterval(clickedAC, false);
-        myClickedGenericData = attributeCarriers->retrieveGenericData(clickedAC, false);
+        myClickedGenericData = attributeCarriers->retrieveGenericData(clickedAC->getGUIGlObject(), false);
         // create FXMenuPane
         FXMenuPane* pane = new FXMenuPane(myTreeListDynamic->getFXWindow());
         // set item name and icon
@@ -434,7 +434,7 @@ GNEElementTree::showAttributeCarrierParents() {
             }
             case SUMO_TAG_CROSSING: {
                 // obtain crossing parent junction
-                GNEJunction* junction = attributeCarriers->retrieveCrossing(myHE)->getParentJunction();
+                GNEJunction* junction = attributeCarriers->retrieveCrossing(myHE->getGUIGlObject())->getParentJunction();
                 // create junction item
                 FXTreeItem* junctionItem = myTreeListDynamic->appendItem(nullptr, junction->getHierarchyName().c_str(), junction->getACIcon());
                 junctionItem->setExpanded(true);
@@ -471,7 +471,7 @@ GNEElementTree::showAttributeCarrierParents() {
         }
     } else if (myHE->getTagProperty().getTag() == GNE_TAG_POILANE) {
         // Obtain POILane
-        const auto* POILane = myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->retrieveAdditional(myHE);
+        const auto* POILane = myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->retrieveAdditional(myHE->getGUIGlObject());
         // obtain parent lane
         GNELane* lane = attributeCarriers->retrieveLane(POILane->getParentLanes().at(0)->getID());
         // obtain parent edge
@@ -495,7 +495,7 @@ GNEElementTree::showAttributeCarrierParents() {
         return laneItem;
     } else if (myHE->getTagProperty().isAdditionalElement()) {
         // Obtain Additional
-        const GNEAdditional* additional = attributeCarriers->retrieveAdditional(myHE);
+        const GNEAdditional* additional = attributeCarriers->retrieveAdditional(myHE->getGUIGlObject());
         // declare auxiliary FXTreeItem, due a demand element can have multiple "roots"
         FXTreeItem* root = nullptr;
         // check if there is demand elements parents
@@ -558,7 +558,7 @@ GNEElementTree::showAttributeCarrierParents() {
         return root;
     } else if (myHE->getTagProperty().isTAZElement()) {
         // Obtain TAZElement
-        const GNEAdditional* TAZElement = myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->retrieveAdditional(myHE);
+        const GNEAdditional* TAZElement = myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->retrieveAdditional(myHE->getGUIGlObject());
         // declare auxiliary FXTreeItem, due a demand element can have multiple "roots"
         FXTreeItem* root = nullptr;
         // check if there is demand elements parents
@@ -621,7 +621,7 @@ GNEElementTree::showAttributeCarrierParents() {
         return root;
     } else if (myHE->getTagProperty().isDemandElement()) {
         // Obtain DemandElement
-        GNEDemandElement* demandElement = myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->retrieveDemandElement(myHE);
+        GNEDemandElement* demandElement = myFrameParent->getViewNet()->getNet()->getAttributeCarriers()->retrieveDemandElement(myHE->getGUIGlObject());
         // declare auxiliar FXTreeItem, due a demand element can have multiple "roots"
         FXTreeItem* root = nullptr;
         // check if there are demand element parents

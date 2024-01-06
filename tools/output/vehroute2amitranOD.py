@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-# Copyright (C) 2014-2023 German Aerospace Center (DLR) and others.
+# Copyright (C) 2014-2024 German Aerospace Center (DLR) and others.
 # This program and the accompanying materials are made available under the
 # terms of the Eclipse Public License 2.0 which is available at
 # https://www.eclipse.org/legal/epl-2.0/
@@ -24,6 +24,7 @@ from collections import defaultdict
 sys.path.append(os.path.join(os.path.dirname(sys.argv[0]), '..'))
 import sumolib  # noqa
 from sumolib.options import ArgumentParser  # noqa
+
 
 def convert(vehRoutes, routeOut, odOut, interval):
     routeDict = {}
@@ -87,10 +88,10 @@ def convert(vehRoutes, routeOut, odOut, interval):
 if __name__ == "__main__":
     argParser = ArgumentParser()
     argParser.add_argument("-r", "--routes", default='routes.xml', category="input",
-                         help="name of the amitran route file output [default: %(default)s]")
+                           help="name of the amitran route file output [default: %(default)s]")
     argParser.add_argument("-o", "--od-file", default='od.xml', category="output",
-                         help="name of the amitran O/D file output [default: %(default)s]")
+                           help="name of the amitran O/D file output [default: %(default)s]")
     argParser.add_argument("-i", "--interval", default=3600, type=int,
-                         help="aggregation interval in seconds [default: %(default)s]")
+                           help="aggregation interval in seconds [default: %(default)s]")
     (options, args) = argParser.parse_args()
     convert(args[0], options.routes, options.od_file, options.interval)

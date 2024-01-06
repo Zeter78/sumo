@@ -1,6 +1,6 @@
 /****************************************************************************/
 // Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-// Copyright (C) 2001-2023 German Aerospace Center (DLR) and others.
+// Copyright (C) 2001-2024 German Aerospace Center (DLR) and others.
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License 2.0 which is available at
 // https://www.eclipse.org/legal/epl-2.0/
@@ -53,7 +53,6 @@ const std::string GNEAttributeCarrier::False = toString(false);
 
 GNEAttributeCarrier::GNEAttributeCarrier(const SumoXMLTag tag, GNENet* net) :
     myTagProperty(getTagProperty(tag)),
-    myContour(this),
     myNet(net),
     mySelected(false),
     myIsTemplate(false) {
@@ -105,26 +104,25 @@ GNEAttributeCarrier::isAttributeCarrierSelected() const {
 
 bool
 GNEAttributeCarrier::drawUsingSelectColor() const {
-    // get flag for network element
-    const bool networkElement = myTagProperty.isNetworkElement() || myTagProperty.isAdditionalElement();
-    // check supermode network
-    if ((networkElement && myNet->getViewNet()->getEditModes().isCurrentSupermodeNetwork()) ||
-            (myTagProperty.isDemandElement() && myNet->getViewNet()->getEditModes().isCurrentSupermodeDemand()) ||
-            (myTagProperty.isGenericData() && myNet->getViewNet()->getEditModes().isCurrentSupermodeData())) {
-        return mySelected;
+    // first check if element is selected
+    if (mySelected) {
+        // get flag for network element
+        const bool networkElement = myTagProperty.isNetworkElement() || myTagProperty.isAdditionalElement();
+        // check current supermode
+        if (networkElement && myNet->getViewNet()->getEditModes().isCurrentSupermodeNetwork()) {
+            return true;
+        } else if (myTagProperty.isDemandElement() && myNet->getViewNet()->getEditModes().isCurrentSupermodeDemand()) {
+            return true;
+        } else if (myTagProperty.isGenericData() && myNet->getViewNet()->getEditModes().isCurrentSupermodeData()) {
+            return true;
+        } else {
+            return false;
+        }
     } else {
         return false;
     }
 }
 
-
-bool
-GNEAttributeCarrier::checkDrawContour() const {
-    return (checkDrawFromContour() || checkDrawToContour() ||
-            checkDrawRelatedContour() || checkDrawOverContour() ||
-            checkDrawInspectContour() || checkDrawFrontContour() ||
-            checkDrawDeleteContour() || checkDrawSelectContour());
-}
 
 bool
 GNEAttributeCarrier::checkDrawInspectContour() const {
@@ -630,12 +628,6 @@ GNEAttributeCarrier::getACIcon() const {
 bool
 GNEAttributeCarrier::isTemplate() const {
     return myIsTemplate;
-}
-
-
-const GNEContour&
-GNEAttributeCarrier::getContour() const {
-    return myContour;
 }
 
 

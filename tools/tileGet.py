@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # Eclipse SUMO, Simulation of Urban MObility; see https://eclipse.dev/sumo
-# Copyright (C) 2009-2023 German Aerospace Center (DLR) and others.
+# Copyright (C) 2009-2024 German Aerospace Center (DLR) and others.
 # This program and the accompanying materials are made available under the
 # terms of the Eclipse Public License 2.0 which is available at
 # https://www.eclipse.org/legal/epl-2.0/
@@ -148,7 +148,7 @@ def get_options(args=None):
                          help="Number of parallel jobs to run when downloading tiles. 0 means no parallelism.")
     URL_SHORTCUTS = {
         "arcgis": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile",
-        "mapquest": "https://open.mapquestapi.com/staticmap/v4/getmap",
+        "mapquest": "https://www.mapquestapi.com/staticmap/v5/map",
         "google": "https://maps.googleapis.com/maps/api/staticmap"
     }
     options = optParser.parse_args(args=args)
