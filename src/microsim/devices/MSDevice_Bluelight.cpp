@@ -86,9 +86,15 @@ MSDevice_Bluelight::MSDevice_Bluelight(SUMOVehicle& holder, const std::string& i
     MSVehicleDevice(holder, id),
     myReactionDist(reactionDist),
     myMinGapFactor(minGapFactor) {
-#ifdef DEBUG_BLUELIGHT
-    std::cout << SIMTIME << " initialized device '" << id << "' with myReactionDist=" << myReactionDist << "\n";
-#endif
+        // violate red lights, this only need to be done once
+        MSVehicle& ego = dynamic_cast<MSVehicle&>(holder);
+        MSVehicle::Influencer& redLight = ego.getInfluencer();
+        // changed it to 39, so that emergency vehicle also ignores priority within junctions
+        redLight.setSpeedMode(39);
+
+    #ifdef DEBUG_BLUELIGHT
+        std::cout << SIMTIME << " initialized device '" << id << "' with myReactionDist=" << myReactionDist << "\n";
+    #endif
 }
 
 
@@ -99,18 +105,14 @@ MSDevice_Bluelight::~MSDevice_Bluelight() {
 bool
 MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                                double /* newPos */, double newSpeed) {
-#ifdef DEBUG_BLUELIGHT
-    std::cout << SIMTIME  << " device '" << getID() << "' notifyMove: newSpeed=" << newSpeed << "\n";
-#else
-    UNUSED_PARAMETER(newSpeed);
-#endif
-    // violate red lights  this only need to be done once so shift it todo
-    MSVehicle& ego = dynamic_cast<MSVehicle&>(veh);
-    MSVehicle::Influencer& redLight = ego.getInfluencer();
-    const double vMax = ego.getLane()->getVehicleMaxSpeed(&ego);
+    #ifdef DEBUG_BLUELIGHT
+        std::cout << SIMTIME  << " device '" << getID() << "' notifyMove: newSpeed=" << newSpeed << "\n";
+    #else
+        UNUSED_PARAMETER(newSpeed);
+    #endif
 
-    // changed it to 39, so that emergency vehicle also ignores priority within junctions
-    redLight.setSpeedMode(39);
+    MSVehicle& ego = dynamic_cast<MSVehicle&>(veh);
+    const double vMax = ego.getLane()->getVehicleMaxSpeed(&ego);
 
     if (ego.getSpeed() < 0.5 * vMax) {
         // advance as far as possible (assume vehicles will keep moving out of the way)
@@ -138,6 +140,7 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
     // build a rescue lane for all vehicles on the route of the emergency vehicle within the range of the siren
     MSVehicleType* vt = MSNet::getInstance()->getVehicleControl().getVType(veh.getVehicleType().getID());
     vt->setPreferredLateralAlignment(LatAlignmentDefinition::ARBITRARY);
+
     MSVehicleControl& vc = MSNet::getInstance()->getVehicleControl();
     // use edges on the way of the emergency vehicle
     std::vector<const MSEdge*> upcomingEdges;
@@ -164,7 +167,8 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
         }
     }
 
-    // reset all vehicles that were in myInfluencedVehicles in the previous step but not in the current step todo refactor
+    // reset all vehicles that were in myInfluencedVehicles in the previous step but not in the current step 
+    // TODO: refactor
     for (std::string vehID : lastStepInfluencedVehicles) {
         myInfluencedVehicles.erase(vehID);
         Parameterised::Map::iterator it = myInfluencedTypes.find(vehID);
@@ -183,7 +187,7 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
 
         if (std::find(upcomingEdges.begin(), upcomingEdges.end(), &veh2->getLane()->getEdge()) != upcomingEdges.end()) {
             if (veh2->getDevice(typeid(MSDevice_Bluelight)) != nullptr) {
-                // emergency vehicles should not react
+                // vehicles with bluelight device should not react
                 continue;
             }
 
@@ -201,11 +205,12 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                     align = LatAlignmentDefinition::LEFT;
                 }
                 t.setPreferredLateralAlignment(align);
-#ifdef DEBUG_BLUELIGHT_RESCUELANE
-                std::cout << "Refresh alignment for vehicle: " << veh2->getID()
-                          << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
-                          << " alignment=" << toString(align) << "\n";
-#endif
+
+                #ifdef DEBUG_BLUELIGHT_RESCUELANE
+                    std::cout << "Refresh alignment for vehicle: " << veh2->getID()
+                            << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
+                            << " alignment=" << toString(align) << "\n";
+                #endif
             }
 
             double distanceDelta = veh.getPosition().distanceTo(veh2->getPosition());
@@ -215,31 +220,31 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                 std::vector<std::pair<SUMOTime, double> > speedTimeLine;
                 speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep(), veh.getSpeed()));
                 speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep() + TIME2STEPS(2), 5.56));
-                redLight.setSpeedTimeLine(speedTimeLine);
+
+                
+                MSVehicle::Influencer& speedTimeLineAdjuster = ego.getInfluencer();
+                speedTimeLineAdjuster.setSpeedTimeLine(speedTimeLine);
             }
 
             // the perception of the sound of the siren should be around 25 meters
-            // todo only vehicles in front of the emergency vehicle should react
+            // TODO: only vehicles in front of the emergency vehicle should react
             if (distanceDelta <= myReactionDist && veh.getID() != veh2->getID() && myInfluencedVehicles.count(veh2->getID()) == 0) {
                 // only a percentage of vehicles should react to the emergency vehicle to make the behaviour more realistic
                 double reaction = RandHelper::rand();
-                MSVehicle::Influencer& lanechange = veh2->getInfluencer();
 
-                //other vehicle should not use the rescue lane so they should not make any lane changes
-                lanechange.setLaneChangeMode(1605); //todo change lane back
                 // the vehicles should react according to the distance to the emergency vehicle taken from real world data
                 double reactionProb = (
                                           distanceDelta < getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.near-dist", 12.5, false)
                                           ? getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.reaction-prob-near", 0.577, false)
                                           : getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.reaction-prob-far", 0.189, false));
                 
-                // todo works only for one second steps
+                // TODO: works only for one second steps
                 //std::cout << SIMTIME << " veh2=" << veh2->getID() << " distanceDelta=" << distanceDelta << " reaction=" << reaction << " reactionProb=" << reactionProb << "\n";
                 if (veh2->isActionStep(SIMSTEP) && reaction < reactionProb * veh2->getActionStepLengthSecs()) {
                     myInfluencedVehicles.insert(veh2->getID());
                     myInfluencedTypes.insert(std::make_pair(veh2->getID(), veh2->getVehicleType().getID()));
                     if (myMinGapFactor != 1.) {
-                        // TODO this is a permanent change to the vtype!
+                        // TODO: this is a permanent change to the vtype!
                         MSNet::getInstance()->getVehicleControl().getVType(veh2->getVehicleType().getID())->getCarFollowModel().setCollisionMinGapFactor(myMinGapFactor);
                     }
 
@@ -255,14 +260,14 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                     }
                     t.setPreferredLateralAlignment(align);
                     t.setMinGap(t.getMinGap() * myMinGapFactor);
+
                     const_cast<SUMOVTypeParameter&>(t.getParameter()).jmParameter[SUMO_ATTR_JM_STOPLINE_GAP] = toString(myMinGapFactor);
                     
-                    // disable strategic lane-changing
-#ifdef DEBUG_BLUELIGHT_RESCUELANE
-                    std::cout << SIMTIME << " device=" << getID() << " formingRescueLane=" << veh2->getID()
-                              << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
-                              << " alignment=" << toString(align) << "\n";
-#endif
+                    #ifdef DEBUG_BLUELIGHT_RESCUELANE
+                        std::cout << SIMTIME << " device=" << getID() << " formingRescueLane=" << veh2->getID()
+                                << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
+                                << " alignment=" << toString(align) << "\n";
+                    #endif
                     
                     std::vector<std::string> influencedBy = StringTokenizer(veh2->getParameter().getParameter(INFLUENCED_BY, "")).getVector();
                     if (std::find(influencedBy.begin(), influencedBy.end(), myHolder.getID()) == influencedBy.end()) {
@@ -270,7 +275,12 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                         const_cast<SUMOVehicleParameter&>(veh2->getParameter()).setParameter(INFLUENCED_BY, toString(influencedBy));
                     }
 
-                    veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM), "-1");
+                    //other vehicle should not use the rescue lane so they should not make any lane changes
+                    MSVehicle::Influencer& lanechange = veh2->getInfluencer();
+                    lanechange.setLaneChangeMode(1536);
+
+                    // disable strategic lane-changing
+                    //veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM), "-1");
                 }
             }
 
@@ -372,9 +382,9 @@ MSDevice_Bluelight::resetVehicle(MSVehicle* veh2, const std::string& targetTypeI
     MSVehicleType* targetType = MSNet::getInstance()->getVehicleControl().getVType(targetTypeID);
     //targetType is nullptr if the vehicle type has already changed to its old vehicleType
     if (targetType != nullptr) {
-#ifdef DEBUG_BLUELIGHT_RESCUELANE
-        std::cout << SIMTIME << " device=" << getID() << " reset " << veh2->getID() << "\n";
-#endif
+        #ifdef DEBUG_BLUELIGHT_RESCUELANE
+            std::cout << SIMTIME << " device=" << getID() << " reset " << veh2->getID() << "\n";
+        #endif
 
         std::vector<std::string> influencedBy = StringTokenizer(veh2->getParameter().getParameter(INFLUENCED_BY, "")).getVector();
         auto it = std::find(influencedBy.begin(), influencedBy.end(), myHolder.getID());
@@ -383,6 +393,9 @@ MSDevice_Bluelight::resetVehicle(MSVehicle* veh2, const std::string& targetTypeI
             const_cast<SUMOVehicleParameter&>(veh2->getParameter()).setParameter(INFLUENCED_BY, toString(influencedBy));
         }
         if (influencedBy.size() == 0) {
+            MSVehicle::Influencer& lanechange = veh2->getInfluencer();
+            lanechange.setLaneChangeMode(1621);
+
             veh2->replaceVehicleType(targetType);
             veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM),
                                                     targetType->getParameter().getLCParamString(SUMO_ATTR_LCA_STRATEGIC_PARAM, "1"));
@@ -395,12 +408,13 @@ MSDevice_Bluelight::resetVehicle(MSVehicle* veh2, const std::string& targetTypeI
 bool
 MSDevice_Bluelight::notifyEnter(SUMOTrafficObject& veh, MSMoveReminder::Notification reason, const MSLane* enteredLane) {
     UNUSED_PARAMETER(veh);
-#ifdef DEBUG_BLUELIGHT
-    std::cout << SIMTIME << " device '" << getID() << "' notifyEnter: reason=" << toString(reason) << " enteredLane=" << Named::getIDSecure(enteredLane)  << "\n";
-#else
-    UNUSED_PARAMETER(reason);
-    UNUSED_PARAMETER(enteredLane);
-#endif
+    #ifdef DEBUG_BLUELIGHT
+        std::cout << SIMTIME << " device '" << getID() << "' notifyEnter: reason=" << toString(reason) << " enteredLane=" << Named::getIDSecure(enteredLane)  << "\n";
+    #else
+        UNUSED_PARAMETER(reason);
+        UNUSED_PARAMETER(enteredLane);
+    #endif
+
     return true; // keep the device
 }
 
@@ -408,12 +422,13 @@ MSDevice_Bluelight::notifyEnter(SUMOTrafficObject& veh, MSMoveReminder::Notifica
 bool
 MSDevice_Bluelight::notifyLeave(SUMOTrafficObject& veh, double /*lastPos*/, MSMoveReminder::Notification reason, const MSLane* enteredLane) {
     UNUSED_PARAMETER(veh);
-#ifdef DEBUG_BLUELIGHT
-    std::cout << SIMTIME << " device '" << getID() << "' notifyLeave: reason=" << toString(reason) << " approachedLane=" << Named::getIDSecure(enteredLane) << "\n";
-#else
-    UNUSED_PARAMETER(reason);
-    UNUSED_PARAMETER(enteredLane);
-#endif
+    #ifdef DEBUG_BLUELIGHT
+        std::cout << SIMTIME << " device '" << getID() << "' notifyLeave: reason=" << toString(reason) << " approachedLane=" << Named::getIDSecure(enteredLane) << "\n";
+    #else
+        UNUSED_PARAMETER(reason);
+        UNUSED_PARAMETER(enteredLane);
+    #endif
+
     return true; // keep the device
 }
 
