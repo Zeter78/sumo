@@ -156,6 +156,9 @@ private:
     /// @brief min gap reduction of other vehicles
     double myMinGapFactor;
 
+    /// @brief the old vType Id, before adding the bluelight device
+    std::string myOldVTypeId;
+
 private:
     /// @brief Invalidated copy constructor.
     MSDevice_Bluelight(const MSDevice_Bluelight&);

@@ -92,6 +92,13 @@ MSDevice_Bluelight::MSDevice_Bluelight(SUMOVehicle& holder, const std::string& i
         // changed it to 39, so that emergency vehicle also ignores priority within junctions
         redLight.setSpeedMode(39);
 
+        // change vClass to emergency
+        // store old vType Id
+        myOldVTypeId = ego.getVehicleType().getID();
+        // vClass is defined in vType, to change it for ONLY this single vehicle we need a singular type
+        MSVehicleType& newType = ego.getSingularType();
+        newType.setVClass(SUMOVehicleClass::SVC_EMERGENCY);
+        
     #ifdef DEBUG_BLUELIGHT
         std::cout << SIMTIME << " initialized device '" << id << "' with myReactionDist=" << myReactionDist << "\n";
     #endif
@@ -99,6 +106,12 @@ MSDevice_Bluelight::MSDevice_Bluelight(SUMOVehicle& holder, const std::string& i
 
 
 MSDevice_Bluelight::~MSDevice_Bluelight() {
+    // change vClass back to the former one
+    // to do that change the vType back to the old one
+    MSVehicleType* targetType = MSNet::getInstance()->getVehicleControl().getVType(myOldVTypeId);
+    if (targetType != nullptr) {
+        this->getHolder().replaceVehicleType(targetType);
+    }
 }
 
 
