@@ -137,10 +137,13 @@ private:
      * @param[in] holder The vehicle that holds this device
      * @param[in] id The ID of the device
      */
-    MSDevice_Bluelight(SUMOVehicle& holder, const std::string& id, const double reactionDist, const double minGapFactor);
+    MSDevice_Bluelight(SUMOVehicle& holder, const std::string& id, const double reactionDist, const double minGapFactor, const bool activated);
 
     /// @brief restore type of influenced vehicle
     void resetVehicle(MSVehicle* veh2, const std::string& targetTypeID);
+
+    /// @brief adjust vehicle when bluelight device gets activated/deactivated
+    void activatedChanged();
 
 
 private:
@@ -156,8 +159,8 @@ private:
     /// @brief min gap reduction of other vehicles
     double myMinGapFactor;
 
-    /// @brief the old vType Id, before adding the bluelight device
-    std::string myOldVTypeId;
+    /// @brief if the bluelight device is activated (only when activated the vehicle has special rights)
+    bool activated;
 
 private:
     /// @brief Invalidated copy constructor.

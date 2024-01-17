@@ -59,6 +59,8 @@ MSDevice_Bluelight::insertOptions(OptionsCont& oc) {
     oc.addDescription("device.bluelight.reactiondist", "Bluelight Device", TL("Set the distance at which other drivers react to the blue light and siren sound"));
     oc.doRegister("device.bluelight.mingapfactor", new Option_Float(1.));
     oc.addDescription("device.bluelight.mingapfactor", "Bluelight Device", TL("Reduce the minGap for reacting vehicles by the given factor"));
+    oc.doRegister("device.bluelight.activated", new Option_Bool(true));
+    oc.addDescription("device.bluelight.activated", "Bluelight Device", TL("Boolean which decides if bluelight device is activated. Only when true the vehicle has special rights"));
 }
 
 
@@ -71,7 +73,8 @@ MSDevice_Bluelight::buildVehicleDevices(SUMOVehicle& v, std::vector<MSVehicleDev
         } else {
             MSDevice_Bluelight* device = new MSDevice_Bluelight(v, "bluelight_" + v.getID(),
                     getFloatParam(v, oc, "bluelight.reactiondist", oc.getFloat("device.bluelight.reactiondist")),
-                    getFloatParam(v, oc, "bluelight.mingapfactor", oc.getFloat("device.bluelight.mingapfactor")));
+                    getFloatParam(v, oc, "bluelight.mingapfactor", oc.getFloat("device.bluelight.mingapfactor")),
+                    getBoolParam(v, oc, "bluelight.activated", oc.getBool("device.bluelight.activated")));
             into.push_back(device);
         }
     }
@@ -82,23 +85,32 @@ MSDevice_Bluelight::buildVehicleDevices(SUMOVehicle& v, std::vector<MSVehicleDev
 // MSDevice_Bluelight-methods
 // ---------------------------------------------------------------------------
 MSDevice_Bluelight::MSDevice_Bluelight(SUMOVehicle& holder, const std::string& id,
-                                       const double reactionDist, const double minGapFactor) :
+                                       const double reactionDist, const double minGapFactor, const bool activated) :
     MSVehicleDevice(holder, id),
     myReactionDist(reactionDist),
-    myMinGapFactor(minGapFactor) {
-        // violate red lights, this only need to be done once
-        MSVehicle& ego = dynamic_cast<MSVehicle&>(holder);
-        MSVehicle::Influencer& redLight = ego.getInfluencer();
-        // changed it to 39, so that emergency vehicle also ignores priority within junctions
-        redLight.setSpeedMode(39);
-
-        // change vClass to emergency
-        // store old vType Id
-        myOldVTypeId = ego.getVehicleType().getID();
-        // vClass is defined in vType, to change it for ONLY this single vehicle we need a singular type
-        MSVehicleType& newType = ego.getSingularType();
-        newType.setVClass(SUMOVehicleClass::SVC_EMERGENCY);
+    myMinGapFactor(minGapFactor),
+    activated(activated) {
+        if (activated) {
+            // if the initial value of activated is true we need to give the vehicle the special rights, that only need to be done ONCE and not on every move
+            // if the initial value of activated is false we don't need to do anything, just keep the standard default values
         
+            MSVehicle& ego = dynamic_cast<MSVehicle&>(holder);
+            MSVehicle::Influencer& influencer = ego.getInfluencer();
+
+            // violate red lights
+            influencer.setSpeedMode(39);
+
+            // change vClass to emergency
+            // vClass is defined in vType, to change it for ONLY this single vehicle we need a singular type
+            MSVehicleType& newType = ego.getSingularType();
+            newType.setVClass(SUMOVehicleClass::SVC_EMERGENCY);
+
+            // DO NOT reroute here, because that will crash the program (the route will anyways be computed correctly afterwards)
+
+            // set speedFactor, so that vehicle can drive up to 1.5 faster than the normal speed limit
+            newType.setSpeedFactor(1.50);
+        }
+
     #ifdef DEBUG_BLUELIGHT
         std::cout << SIMTIME << " initialized device '" << id << "' with myReactionDist=" << myReactionDist << "\n";
     #endif
@@ -106,12 +118,6 @@ MSDevice_Bluelight::MSDevice_Bluelight(SUMOVehicle& holder, const std::string& i
 
 
 MSDevice_Bluelight::~MSDevice_Bluelight() {
-    // change vClass back to the former one
-    // to do that change the vType back to the old one
-    MSVehicleType* targetType = MSNet::getInstance()->getVehicleControl().getVType(myOldVTypeId);
-    if (targetType != nullptr) {
-        this->getHolder().replaceVehicleType(targetType);
-    }
 }
 
 
@@ -124,143 +130,90 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
         UNUSED_PARAMETER(newSpeed);
     #endif
 
-    MSVehicle& ego = dynamic_cast<MSVehicle&>(veh);
-    const double vMax = ego.getLane()->getVehicleMaxSpeed(&ego);
+    if (activated) {
+        MSVehicle& ego = dynamic_cast<MSVehicle&>(veh);
+        const double vMax = ego.getLane()->getVehicleMaxSpeed(&ego);
 
-    if (ego.getSpeed() < 0.5 * vMax) {
-        // advance as far as possible (assume vehicles will keep moving out of the way)
-        ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM), "-1");
-        ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD), "0");
-        try {
-            ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_MINGAP_LAT), "0");
-        } catch (InvalidArgument&) {
-            // not supported by the current laneChangeModel
-        }
-    } else {
-        // restore defaults
-        ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM),
-                                              ego.getVehicleType().getParameter().getLCParamString(SUMO_ATTR_LCA_STRATEGIC_PARAM, "1"));
-        ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD),
-                                              ego.getVehicleType().getParameter().getLCParamString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD, "5"));
-        try {
-            ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_MINGAP_LAT),
-                                                  toString(ego.getVehicleType().getMinGapLat()));
-        } catch (InvalidArgument&) {
-            // not supported by the current laneChangeModel
-        }
-    }
-
-    // build a rescue lane for all vehicles on the route of the emergency vehicle within the range of the siren
-    MSVehicleType* vt = MSNet::getInstance()->getVehicleControl().getVType(veh.getVehicleType().getID());
-    vt->setPreferredLateralAlignment(LatAlignmentDefinition::ARBITRARY);
-
-    MSVehicleControl& vc = MSNet::getInstance()->getVehicleControl();
-    // use edges on the way of the emergency vehicle
-    std::vector<const MSEdge*> upcomingEdges;
-    std::set<MSVehicle*, ComparatorIdLess> upcomingVehicles;
-    std::set<std::string> lastStepInfluencedVehicles = myInfluencedVehicles;
-    std::vector<MSLink*> upcomingLinks;
-    double affectedJunctionDist = ego.getPositionOnLane() + myReactionDist;
-    for (const MSLane* const l : ego.getUpcomingLanesUntil(myReactionDist)) {
-        upcomingEdges.push_back(&l->getEdge());
-
-        affectedJunctionDist -= l->getLength();
-        if (affectedJunctionDist > 0 && l->isInternal()) {
-            upcomingLinks.push_back(l->getIncomingLanes()[0].viaLink);
-        }
-    }
-
-    for (const MSEdge* const e : upcomingEdges) {
-        //inform all vehicles on upcomingEdges
-        for (const SUMOVehicle* v : e->getVehicles()) {
-            upcomingVehicles.insert(dynamic_cast<MSVehicle*>(const_cast<SUMOVehicle*>(v)));
-            if (lastStepInfluencedVehicles.count(v->getID()) > 0) {
-                lastStepInfluencedVehicles.erase(v->getID());
+        if (ego.getSpeed() < 0.5 * vMax) {
+            // advance as far as possible (assume vehicles will keep moving out of the way)
+            ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM), "-1");
+            ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD), "0");
+            try {
+                ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_MINGAP_LAT), "0");
+            } catch (InvalidArgument&) {
+                // not supported by the current laneChangeModel
+            }
+        } else {
+            // restore defaults (also when bluelight device was deactivated we need to restore the defaults, BUT that is done in the activatedChanged
+            // method)
+            ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM),
+                                                ego.getVehicleType().getParameter().getLCParamString(SUMO_ATTR_LCA_STRATEGIC_PARAM, "1"));
+            ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD),
+                                                ego.getVehicleType().getParameter().getLCParamString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD, "5"));
+            try {
+                ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_MINGAP_LAT),
+                                                toString(ego.getVehicleType().getMinGapLat()));
+            } catch (InvalidArgument&) {
+                // not supported by the current laneChangeModel
             }
         }
-    }
+        // build a rescue lane for all vehicles on the route of the emergency vehicle within the range of the siren
+        MSVehicleType* vt = MSNet::getInstance()->getVehicleControl().getVType(veh.getVehicleType().getID());
+        vt->setPreferredLateralAlignment(LatAlignmentDefinition::ARBITRARY);
 
-    // reset all vehicles that were in myInfluencedVehicles in the previous step but not in the current step 
-    // TODO: refactor
-    for (std::string vehID : lastStepInfluencedVehicles) {
-        myInfluencedVehicles.erase(vehID);
-        Parameterised::Map::iterator it = myInfluencedTypes.find(vehID);
-        MSVehicle* veh2 = dynamic_cast<MSVehicle*>(vc.getVehicle(vehID));
-        if (veh2 != nullptr && it != myInfluencedTypes.end()) {
-            // The vehicle gets back its old VehicleType after the emergency vehicle have passed them
-            resetVehicle(veh2, it->second);
+        MSVehicleControl& vc = MSNet::getInstance()->getVehicleControl();
+        // use edges on the way of the emergency vehicle
+        std::vector<const MSEdge*> upcomingEdges;
+        std::set<MSVehicle*, ComparatorIdLess> upcomingVehicles;
+        std::set<std::string> lastStepInfluencedVehicles = myInfluencedVehicles;
+        std::vector<MSLink*> upcomingLinks;
+        double affectedJunctionDist = ego.getPositionOnLane() + myReactionDist;
+        for (const MSLane* const l : ego.getUpcomingLanesUntil(myReactionDist)) {
+            upcomingEdges.push_back(&l->getEdge());
+
+            affectedJunctionDist -= l->getLength();
+            if (affectedJunctionDist > 0 && l->isInternal()) {
+                upcomingLinks.push_back(l->getIncomingLanes()[0].viaLink);
+            }
         }
-    }
 
-    for (MSVehicle* veh2 : upcomingVehicles) {
-        assert(veh2 != nullptr);
-        if (veh2->getLane() == nullptr) {
-            continue;
+        for (const MSEdge* const e : upcomingEdges) {
+            //inform all vehicles on upcomingEdges
+            for (const SUMOVehicle* v : e->getVehicles()) {
+                upcomingVehicles.insert(dynamic_cast<MSVehicle*>(const_cast<SUMOVehicle*>(v)));
+                if (lastStepInfluencedVehicles.count(v->getID()) > 0) {
+                    lastStepInfluencedVehicles.erase(v->getID());
+                }
+            }
         }
 
-        if (std::find(upcomingEdges.begin(), upcomingEdges.end(), &veh2->getLane()->getEdge()) != upcomingEdges.end()) {
-            if (veh2->getDevice(typeid(MSDevice_Bluelight)) != nullptr) {
-                // vehicles with bluelight device should not react
+        // reset all vehicles that were in myInfluencedVehicles in the previous step but not in the current step 
+        // TODO: refactor
+        for (std::string vehID : lastStepInfluencedVehicles) {
+            myInfluencedVehicles.erase(vehID);
+            Parameterised::Map::iterator it = myInfluencedTypes.find(vehID);
+            MSVehicle* veh2 = dynamic_cast<MSVehicle*>(vc.getVehicle(vehID));
+            if (veh2 != nullptr && it != myInfluencedTypes.end()) {
+                // The vehicle gets back its old VehicleType after the emergency vehicle have passed them
+                resetVehicle(veh2, it->second);
+            }
+        }
+
+        for (MSVehicle* veh2 : upcomingVehicles) {
+            assert(veh2 != nullptr);
+            if (veh2->getLane() == nullptr) {
                 continue;
             }
 
-            const int numLanes = (int)veh2->getLane()->getEdge().getNumLanes();
-            // make sure that vehicles are still building the rescue lane as they might have moved to a new edge or changed lanes
-            if (myInfluencedVehicles.count(veh2->getID()) > 0) {
-                // Vehicle gets a new Vehicletype to change the alignment and the lanechange options
-                MSVehicleType& t = veh2->getSingularType();
-                // Setting the lateral alignment to build a rescue lane
-                LatAlignmentDefinition align = LatAlignmentDefinition::RIGHT;
-                // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
-                // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
-                // in all other cases it should align to the right
-                if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
-                    align = LatAlignmentDefinition::LEFT;
+            if (std::find(upcomingEdges.begin(), upcomingEdges.end(), &veh2->getLane()->getEdge()) != upcomingEdges.end()) {
+                if (veh2->getDevice(typeid(MSDevice_Bluelight)) != nullptr) {
+                    // vehicles with bluelight device should not react
+                    continue;
                 }
-                t.setPreferredLateralAlignment(align);
 
-                #ifdef DEBUG_BLUELIGHT_RESCUELANE
-                    std::cout << "Refresh alignment for vehicle: " << veh2->getID()
-                            << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
-                            << " alignment=" << toString(align) << "\n";
-                #endif
-            }
-
-            double distanceDelta = veh.getPosition().distanceTo(veh2->getPosition());
-            //emergency vehicle has to slow down when entering the rescue lane
-            if (distanceDelta <= 10 && veh.getID() != veh2->getID() && myInfluencedVehicles.count(veh2->getID()) > 0 && veh2->getSpeed() < 1) {
-                // set ev speed to 20 km/h 0 5.56 m/s
-                std::vector<std::pair<SUMOTime, double> > speedTimeLine;
-                speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep(), veh.getSpeed()));
-                speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep() + TIME2STEPS(2), 5.56));
-
-                
-                MSVehicle::Influencer& speedTimeLineAdjuster = ego.getInfluencer();
-                speedTimeLineAdjuster.setSpeedTimeLine(speedTimeLine);
-            }
-
-            // the perception of the sound of the siren should be around 25 meters
-            // TODO: only vehicles in front of the emergency vehicle should react
-            if (distanceDelta <= myReactionDist && veh.getID() != veh2->getID() && myInfluencedVehicles.count(veh2->getID()) == 0) {
-                // only a percentage of vehicles should react to the emergency vehicle to make the behaviour more realistic
-                double reaction = RandHelper::rand();
-
-                // the vehicles should react according to the distance to the emergency vehicle taken from real world data
-                double reactionProb = (
-                                          distanceDelta < getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.near-dist", 12.5, false)
-                                          ? getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.reaction-prob-near", 0.577, false)
-                                          : getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.reaction-prob-far", 0.189, false));
-                
-                // TODO: works only for one second steps
-                //std::cout << SIMTIME << " veh2=" << veh2->getID() << " distanceDelta=" << distanceDelta << " reaction=" << reaction << " reactionProb=" << reactionProb << "\n";
-                if (veh2->isActionStep(SIMSTEP) && reaction < reactionProb * veh2->getActionStepLengthSecs()) {
-                    myInfluencedVehicles.insert(veh2->getID());
-                    myInfluencedTypes.insert(std::make_pair(veh2->getID(), veh2->getVehicleType().getID()));
-                    if (myMinGapFactor != 1.) {
-                        // TODO: this is a permanent change to the vtype!
-                        MSNet::getInstance()->getVehicleControl().getVType(veh2->getVehicleType().getID())->getCarFollowModel().setCollisionMinGapFactor(myMinGapFactor);
-                    }
-
+                const int numLanes = (int)veh2->getLane()->getEdge().getNumLanes();
+                // make sure that vehicles are still building the rescue lane as they might have moved to a new edge or changed lanes
+                if (myInfluencedVehicles.count(veh2->getID()) > 0) {
                     // Vehicle gets a new Vehicletype to change the alignment and the lanechange options
                     MSVehicleType& t = veh2->getSingularType();
                     // Setting the lateral alignment to build a rescue lane
@@ -272,118 +225,173 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                         align = LatAlignmentDefinition::LEFT;
                     }
                     t.setPreferredLateralAlignment(align);
-                    t.setMinGap(t.getMinGap() * myMinGapFactor);
 
-                    const_cast<SUMOVTypeParameter&>(t.getParameter()).jmParameter[SUMO_ATTR_JM_STOPLINE_GAP] = toString(myMinGapFactor);
-                    
                     #ifdef DEBUG_BLUELIGHT_RESCUELANE
-                        std::cout << SIMTIME << " device=" << getID() << " formingRescueLane=" << veh2->getID()
+                        std::cout << "Refresh alignment for vehicle: " << veh2->getID()
                                 << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
                                 << " alignment=" << toString(align) << "\n";
                     #endif
-                    
-                    std::vector<std::string> influencedBy = StringTokenizer(veh2->getParameter().getParameter(INFLUENCED_BY, "")).getVector();
-                    if (std::find(influencedBy.begin(), influencedBy.end(), myHolder.getID()) == influencedBy.end()) {
-                        influencedBy.push_back(myHolder.getID());
-                        const_cast<SUMOVehicleParameter&>(veh2->getParameter()).setParameter(INFLUENCED_BY, toString(influencedBy));
-                    }
-
-                    //other vehicle should not use the rescue lane so they should not make any lane changes
-                    MSVehicle::Influencer& lanechange = veh2->getInfluencer();
-                    lanechange.setLaneChangeMode(1536);
-
-                    // disable strategic lane-changing
-                    //veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM), "-1");
                 }
-            }
 
-        } else {
-            //if vehicle is passed all vehicles which had to react should get their state back after they leave the communication range
-            if (myInfluencedVehicles.count(veh2->getID()) > 0) {
                 double distanceDelta = veh.getPosition().distanceTo(veh2->getPosition());
-                if (distanceDelta > myReactionDist && veh.getID() != veh2->getID()) {
-                    myInfluencedVehicles.erase(veh2->getID());
-                    Parameterised::Map::iterator it = myInfluencedTypes.find(veh2->getID());
-                    if (it != myInfluencedTypes.end()) {
-                        // The vehicle gets back its old VehicleType after the emergency vehicle have passed them
-                        resetVehicle(veh2, it->second);
+                //emergency vehicle has to slow down when entering the rescue lane
+                if (distanceDelta <= 10 && veh.getID() != veh2->getID() && myInfluencedVehicles.count(veh2->getID()) > 0 && veh2->getSpeed() < 1) {
+                    // set ev speed to 20 km/h 0 5.56 m/s
+                    std::vector<std::pair<SUMOTime, double> > speedTimeLine;
+                    speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep(), veh.getSpeed()));
+                    speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep() + TIME2STEPS(2), 5.56));
+
+                    
+                    MSVehicle::Influencer& speedTimeLineAdjuster = ego.getInfluencer();
+                    speedTimeLineAdjuster.setSpeedTimeLine(speedTimeLine);
+                }
+
+                // the perception of the sound of the siren should be around 25 meters
+                // TODO: only vehicles in front of the emergency vehicle should react
+                if (distanceDelta <= myReactionDist && veh.getID() != veh2->getID() && myInfluencedVehicles.count(veh2->getID()) == 0) {
+                    // only a percentage of vehicles should react to the emergency vehicle to make the behaviour more realistic
+                    double reaction = RandHelper::rand();
+
+                    // the vehicles should react according to the distance to the emergency vehicle taken from real world data
+                    double reactionProb = (
+                                            distanceDelta < getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.near-dist", 12.5, false)
+                                            ? getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.reaction-prob-near", 0.577, false)
+                                            : getFloatParam(myHolder, OptionsCont::getOptions(), "bluelight.reaction-prob-far", 0.189, false));
+                    
+                    // TODO: works only for one second steps
+                    //std::cout << SIMTIME << " veh2=" << veh2->getID() << " distanceDelta=" << distanceDelta << " reaction=" << reaction << " reactionProb=" << reactionProb << "\n";
+                    if (veh2->isActionStep(SIMSTEP) && reaction < reactionProb * veh2->getActionStepLengthSecs()) {
+                        myInfluencedVehicles.insert(veh2->getID());
+                        myInfluencedTypes.insert(std::make_pair(veh2->getID(), veh2->getVehicleType().getID()));
+                        if (myMinGapFactor != 1.) {
+                            // TODO: this is a permanent change to the vtype!
+                            MSNet::getInstance()->getVehicleControl().getVType(veh2->getVehicleType().getID())->getCarFollowModel().setCollisionMinGapFactor(myMinGapFactor);
+                        }
+
+                        // Vehicle gets a new Vehicletype to change the alignment and the lanechange options
+                        MSVehicleType& t = veh2->getSingularType();
+                        // Setting the lateral alignment to build a rescue lane
+                        LatAlignmentDefinition align = LatAlignmentDefinition::RIGHT;
+                        // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
+                        // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
+                        // in all other cases it should align to the right
+                        if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
+                            align = LatAlignmentDefinition::LEFT;
+                        }
+                        t.setPreferredLateralAlignment(align);
+                        t.setMinGap(t.getMinGap() * myMinGapFactor);
+
+                        const_cast<SUMOVTypeParameter&>(t.getParameter()).jmParameter[SUMO_ATTR_JM_STOPLINE_GAP] = toString(myMinGapFactor);
+                        
+                        #ifdef DEBUG_BLUELIGHT_RESCUELANE
+                            std::cout << SIMTIME << " device=" << getID() << " formingRescueLane=" << veh2->getID()
+                                    << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
+                                    << " alignment=" << toString(align) << "\n";
+                        #endif
+                        
+                        std::vector<std::string> influencedBy = StringTokenizer(veh2->getParameter().getParameter(INFLUENCED_BY, "")).getVector();
+                        if (std::find(influencedBy.begin(), influencedBy.end(), myHolder.getID()) == influencedBy.end()) {
+                            influencedBy.push_back(myHolder.getID());
+                            const_cast<SUMOVehicleParameter&>(veh2->getParameter()).setParameter(INFLUENCED_BY, toString(influencedBy));
+                        }
+
+                        //other vehicle should not use the rescue lane so they should not make any lane changes
+                        MSVehicle::Influencer& lanechange = veh2->getInfluencer();
+                        lanechange.setLaneChangeMode(1536);
+
+                        // disable strategic lane-changing
+                        //veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM), "-1");
                     }
                 }
-            }
-        }
-    }
 
-    // make upcoming junction foes slow down
-    for (MSLink* link : upcomingLinks) {
-        auto avi = link->getApproaching(&ego);
-        MSLink::BlockingFoes blockingFoes;
-        link->opened(avi.arrivalTime, avi.arrivalSpeed, avi.arrivalSpeed, ego.getLength(),
-                     0, ego.getCarFollowModel().getMaxDecel(), ego.getWaitingTime(), ego.getLateralPositionOnLane(), &blockingFoes, true, &ego);
-        
-        const SUMOTime timeToArrival = avi.arrivalTime - SIMSTEP;
-        for (const SUMOVehicle* foe : blockingFoes) {
-            const double dist = ego.getPosition().distanceTo2D(foe->getPosition());
-            if (dist < myReactionDist) {
-                MSVehicle* microFoe = dynamic_cast<MSVehicle*>(const_cast<SUMOVehicle*>(foe));
-                if (microFoe->getDevice(typeid(MSDevice_Bluelight)) != nullptr) {
-                    // emergency vehicles should not react
-                    continue;
-                }
-                const double timeToBrake = foe->getSpeed() / 4.5;
-                if (timeToArrival < TIME2STEPS(timeToBrake + 1)) {
-                    std::vector<std::pair<SUMOTime, double> > speedTimeLine;
-                    speedTimeLine.push_back(std::make_pair(SIMSTEP, foe->getSpeed()));
-                    speedTimeLine.push_back(std::make_pair(avi.arrivalTime, 0));
-                    microFoe->getInfluencer().setSpeedTimeLine(speedTimeLine);
-                    //std::cout << SIMTIME << " foe=" << foe->getID() << " dist=" << dist << " timeToBrake= " << timeToBrake << " ttA=" << STEPS2TIME(timeToArrival) << "\n";
-                }
-            }
-        }
-    }
-
-    // ego is at the end of its current lane and cannot continue
-    const double distToEnd = ego.getLane()->getLength() - ego.getPositionOnLane();
-    //std::cout << SIMTIME << " " << getID() << " lane=" << ego.getLane()->getID() << " pos=" << ego.getPositionOnLane() << " distToEnd=" << distToEnd << " conts=" << toString(ego.getBestLanesContinuation()) << " furtherEdges=" << upcomingEdges.size() << "\n";
-    if (ego.getBestLanesContinuation().size() == 1 && distToEnd <= POSITION_EPS
-            // route continues
-            && upcomingEdges.size() > 1) {
-        const MSEdge* currentEdge = &ego.getLane()->getEdge();
-        // move onto the intersection as if there was a connection from the current lane
-        const MSEdge* next = currentEdge->getInternalFollowingEdge(upcomingEdges[1], ego.getVClass());
-        if (next == nullptr) {
-            next = upcomingEdges[1];
-        }
-        // pick the lane that causes the minimizes lateral jump
-        const std::vector<MSLane*>* allowed = next->allowedLanes(ego.getVClass());
-        MSLane* nextLane = next->getLanes().front();
-        double bestJump = std::numeric_limits<double>::max();
-        double newPosLat = 0;
-        if (allowed != nullptr) {
-            for (MSLane* nextCand : *allowed) {
-                for (auto ili : nextCand->getIncomingLanes()) {
-                    if (&ili.lane->getEdge() == currentEdge) {
-                        double jump = fabs(ego.getLatOffset(ili.lane) + ego.getLateralPositionOnLane());
-                        if (jump < bestJump) {
-                            //std::cout << SIMTIME << " nextCand=" << nextCand->getID() << " from=" << ili.lane->getID() << " jump=" << jump << "\n";
-                            bestJump = jump;
-                            nextLane = nextCand;
-                            // stay within newLane
-                            const double maxVehOffset = MAX2(0.0, nextLane->getWidth() - ego.getVehicleType().getWidth()) * 0.5;
-                            newPosLat = ego.getLatOffset(ili.lane) + ego.getLateralPositionOnLane();
-                            newPosLat = MAX2(-maxVehOffset, newPosLat);
-                            newPosLat = MIN2(maxVehOffset, newPosLat);
+            } else {
+                //if vehicle is passed all vehicles which had to react should get their state back after they leave the communication range
+                if (myInfluencedVehicles.count(veh2->getID()) > 0) {
+                    double distanceDelta = veh.getPosition().distanceTo(veh2->getPosition());
+                    if (distanceDelta > myReactionDist && veh.getID() != veh2->getID()) {
+                        myInfluencedVehicles.erase(veh2->getID());
+                        Parameterised::Map::iterator it = myInfluencedTypes.find(veh2->getID());
+                        if (it != myInfluencedTypes.end()) {
+                            // The vehicle gets back its old VehicleType after the emergency vehicle have passed them
+                            resetVehicle(veh2, it->second);
                         }
                     }
                 }
             }
         }
-        ego.leaveLane(NOTIFICATION_JUNCTION, nextLane);
-        ego.getLaneChangeModel().cleanupShadowLane();
-        ego.getLaneChangeModel().cleanupTargetLane();
-        ego.setTentativeLaneAndPosition(nextLane, 0, newPosLat); // update position
-        ego.enterLaneAtMove(nextLane);
-        // sublane model must adapt state to the new lane
-        ego.getLaneChangeModel().prepareStep();
+
+        // make upcoming junction foes slow down
+        for (MSLink* link : upcomingLinks) {
+            auto avi = link->getApproaching(&ego);
+            MSLink::BlockingFoes blockingFoes;
+            link->opened(avi.arrivalTime, avi.arrivalSpeed, avi.arrivalSpeed, ego.getLength(),
+                        0, ego.getCarFollowModel().getMaxDecel(), ego.getWaitingTime(), ego.getLateralPositionOnLane(), &blockingFoes, true, &ego);
+            
+            const SUMOTime timeToArrival = avi.arrivalTime - SIMSTEP;
+            for (const SUMOVehicle* foe : blockingFoes) {
+                const double dist = ego.getPosition().distanceTo2D(foe->getPosition());
+                if (dist < myReactionDist) {
+                    MSVehicle* microFoe = dynamic_cast<MSVehicle*>(const_cast<SUMOVehicle*>(foe));
+                    if (microFoe->getDevice(typeid(MSDevice_Bluelight)) != nullptr) {
+                        // emergency vehicles should not react
+                        continue;
+                    }
+                    const double timeToBrake = foe->getSpeed() / 4.5;
+                    if (timeToArrival < TIME2STEPS(timeToBrake + 1)) {
+                        std::vector<std::pair<SUMOTime, double> > speedTimeLine;
+                        speedTimeLine.push_back(std::make_pair(SIMSTEP, foe->getSpeed()));
+                        speedTimeLine.push_back(std::make_pair(avi.arrivalTime, 0));
+                        microFoe->getInfluencer().setSpeedTimeLine(speedTimeLine);
+                        //std::cout << SIMTIME << " foe=" << foe->getID() << " dist=" << dist << " timeToBrake= " << timeToBrake << " ttA=" << STEPS2TIME(timeToArrival) << "\n";
+                    }
+                }
+            }
+        }
+
+        // ego is at the end of its current lane and cannot continue
+        const double distToEnd = ego.getLane()->getLength() - ego.getPositionOnLane();
+        //std::cout << SIMTIME << " " << getID() << " lane=" << ego.getLane()->getID() << " pos=" << ego.getPositionOnLane() << " distToEnd=" << distToEnd << " conts=" << toString(ego.getBestLanesContinuation()) << " furtherEdges=" << upcomingEdges.size() << "\n";
+        if (ego.getBestLanesContinuation().size() == 1 && distToEnd <= POSITION_EPS
+                // route continues
+                && upcomingEdges.size() > 1) {
+            const MSEdge* currentEdge = &ego.getLane()->getEdge();
+            // move onto the intersection as if there was a connection from the current lane
+            const MSEdge* next = currentEdge->getInternalFollowingEdge(upcomingEdges[1], ego.getVClass());
+            if (next == nullptr) {
+                next = upcomingEdges[1];
+            }
+            // pick the lane that causes the minimizes lateral jump
+            const std::vector<MSLane*>* allowed = next->allowedLanes(ego.getVClass());
+            MSLane* nextLane = next->getLanes().front();
+            double bestJump = std::numeric_limits<double>::max();
+            double newPosLat = 0;
+            if (allowed != nullptr) {
+                for (MSLane* nextCand : *allowed) {
+                    for (auto ili : nextCand->getIncomingLanes()) {
+                        if (&ili.lane->getEdge() == currentEdge) {
+                            double jump = fabs(ego.getLatOffset(ili.lane) + ego.getLateralPositionOnLane());
+                            if (jump < bestJump) {
+                                //std::cout << SIMTIME << " nextCand=" << nextCand->getID() << " from=" << ili.lane->getID() << " jump=" << jump << "\n";
+                                bestJump = jump;
+                                nextLane = nextCand;
+                                // stay within newLane
+                                const double maxVehOffset = MAX2(0.0, nextLane->getWidth() - ego.getVehicleType().getWidth()) * 0.5;
+                                newPosLat = ego.getLatOffset(ili.lane) + ego.getLateralPositionOnLane();
+                                newPosLat = MAX2(-maxVehOffset, newPosLat);
+                                newPosLat = MIN2(maxVehOffset, newPosLat);
+                            }
+                        }
+                    }
+                }
+            }
+            ego.leaveLane(NOTIFICATION_JUNCTION, nextLane);
+            ego.getLaneChangeModel().cleanupShadowLane();
+            ego.getLaneChangeModel().cleanupTargetLane();
+            ego.setTentativeLaneAndPosition(nextLane, 0, newPosLat); // update position
+            ego.enterLaneAtMove(nextLane);
+            // sublane model must adapt state to the new lane
+            ego.getLaneChangeModel().prepareStep();
+        }
     }
 
     return true; // keep the device
@@ -410,8 +418,68 @@ MSDevice_Bluelight::resetVehicle(MSVehicle* veh2, const std::string& targetTypeI
             lanechange.setLaneChangeMode(1621);
 
             veh2->replaceVehicleType(targetType);
-            veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM),
-                                                    targetType->getParameter().getLCParamString(SUMO_ATTR_LCA_STRATEGIC_PARAM, "1"));
+            //veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM),
+            //                                        targetType->getParameter().getLCParamString(SUMO_ATTR_LCA_STRATEGIC_PARAM, "1"));
+        }
+    }
+}
+
+void MSDevice_Bluelight::activatedChanged(){
+    MSVehicle& ego = dynamic_cast<MSVehicle&>(this->getHolder());
+    MSVehicle::Influencer& influencer = ego.getInfluencer();
+
+    if (activated) {
+        // activated got set to true --> activate the special rights, that only need to be done ONCE and not on every move
+        
+        // violate red lights
+        influencer.setSpeedMode(39);
+
+        // change vClass to emergency
+        // vClass is defined in vType, to change it for ONLY this single vehicle we need a singular type
+        MSVehicleType& newType = ego.getSingularType();
+        newType.setVClass(SUMOVehicleClass::SVC_EMERGENCY);
+        // we need to compute a new route, when vClass changes
+        ego.reroute(MSNet::getInstance()->getCurrentTimeStep(), "device:bluelightVClassChanged", ego.getBaseInfluencer().getRouterTT(ego.getRNGIndex(), ego.getVClass()));
+
+        // set speedFactor, so that vehicle can drive up to 1.5 faster than the normal speed limit
+        newType.setSpeedFactor(1.50);
+    } else {
+        // activated got set to false --> deactivate the special rights, that only need to be done ONCE and not on every move and reset
+        // ALL influenced vehicles and reset all possibly changed vehicle parameters of the holder vehicle to the default values
+        
+        // reset violation of red lights back to default value
+        influencer.setSpeedMode(31);
+
+        // change the vType back to the old one: this automatically resets the vClass and the speedFactor to the normal ones
+        MSVehicleType* targetType = MSNet::getInstance()->getVehicleControl().getVType(ego.getVehicleType().getOriginalID());
+        if (targetType != nullptr) {
+            this->getHolder().replaceVehicleType(targetType);
+        }
+        // we need to compute a new route, when vClass changes
+        ego.reroute(MSNet::getInstance()->getCurrentTimeStep(), "device:bluelightVClassChanged", ego.getBaseInfluencer().getRouterTT(ego.getRNGIndex(), ego.getVClass()));
+
+        // reset ALL influenced vehicles
+        for (std::string vehID : myInfluencedVehicles) {
+            myInfluencedVehicles.erase(vehID);
+            Parameterised::Map::iterator it = myInfluencedTypes.find(vehID);
+            MSVehicleControl& vc = MSNet::getInstance()->getVehicleControl();
+            MSVehicle* veh2 = dynamic_cast<MSVehicle*>(vc.getVehicle(vehID));
+            if (veh2 != nullptr && it != myInfluencedTypes.end()) {
+                // The vehicle gets back its old VehicleType, when the bluelight device gets deactivated
+                resetVehicle(veh2, it->second);
+            }
+        }
+
+        // when bluelight device was deactivated we need to restore the defaults of the holder vehicle
+        ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM),
+                                            ego.getVehicleType().getParameter().getLCParamString(SUMO_ATTR_LCA_STRATEGIC_PARAM, "1"));
+        ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD),
+                                            ego.getVehicleType().getParameter().getLCParamString(SUMO_ATTR_LCA_SPEEDGAIN_LOOKAHEAD, "5"));
+        try {
+            ego.getLaneChangeModel().setParameter(toString(SUMO_ATTR_MINGAP_LAT),
+                                            toString(ego.getVehicleType().getMinGapLat()));
+        } catch (InvalidArgument&) {
+            // not supported by the current laneChangeModel
         }
     }
 }
@@ -458,6 +526,10 @@ std::string
 MSDevice_Bluelight::getParameter(const std::string& key) const {
     if (key == "reactiondist") {
         return toString(myReactionDist);
+    } else if (key == "mingapfactor"){
+        return toString(myMinGapFactor);
+    } else if (key == "activated"){
+        return toString(activated);
     }
     throw InvalidArgument("Parameter '" + key + "' is not supported for device of type '" + deviceName() + "'");
 }
@@ -465,14 +537,32 @@ MSDevice_Bluelight::getParameter(const std::string& key) const {
 
 void
 MSDevice_Bluelight::setParameter(const std::string& key, const std::string& value) {
-    double doubleValue;
-    try {
-        doubleValue = StringUtils::toDouble(value);
-    } catch (NumberFormatException&) {
-        throw InvalidArgument("Setting parameter '" + key + "' requires a number for device of type '" + deviceName() + "'");
-    }
     if (key == "reactiondist") {
+        double doubleValue;
+        try {
+            doubleValue = StringUtils::toDouble(value);
+        } catch (NumberFormatException&) {
+            throw InvalidArgument("Setting parameter '" + key + "' requires a number for device of type '" + deviceName() + "'");
+        }
         myReactionDist = doubleValue;
+    } else if (key == "mingapfactor"){
+        double doubleValue;
+        try {
+            doubleValue = StringUtils::toDouble(value);
+        } catch (NumberFormatException&) {
+            throw InvalidArgument("Setting parameter '" + key + "' requires a number for device of type '" + deviceName() + "'");
+        }
+        myMinGapFactor = doubleValue;
+    } else if (key == "activated"){
+        bool boolValue;
+        try {
+            boolValue = StringUtils::toBool(value);
+        } catch (BoolFormatException&) {
+            throw InvalidArgument("Setting parameter '" + key + "' requires a bool for device of type '" + deviceName() + "'");
+        }
+        activated = boolValue;
+        // activated got changed --> adjust vehicle
+        activatedChanged();
     } else {
         throw InvalidArgument("Setting parameter '" + key + "' is not supported for device of type '" + deviceName() + "'");
     }
