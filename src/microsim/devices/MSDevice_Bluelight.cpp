@@ -218,16 +218,12 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                     MSVehicleType& t = veh2->getSingularType();
                     // Setting the lateral alignment to build a rescue lane
                     LatAlignmentDefinition align = LatAlignmentDefinition::RIGHT;
-                    // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
-                    if(t.getVehicleClass() != SVC_BICYCLE) {
-                        // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
-                        // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
-                        // in all other cases it should align to the right
-                        if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
-                            align = LatAlignmentDefinition::LEFT;
-                        }
+                    // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
+                    // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
+                    // in all other cases it should align to the right
+                    if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
+                        align = LatAlignmentDefinition::LEFT;
                     }
-
                     t.setPreferredLateralAlignment(align);
 
                     #ifdef DEBUG_BLUELIGHT_RESCUELANE
@@ -274,22 +270,22 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
 
                         // Vehicle gets a new Vehicletype to change the alignment and the lanechange options
                         MSVehicleType& t = veh2->getSingularType();
-                        
                         // Setting the lateral alignment to build a rescue lane
                         LatAlignmentDefinition align = LatAlignmentDefinition::RIGHT;
-
-                        // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
-                        if(t.getVehicleClass() != SVC_BICYCLE) {
-                            // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
-                            // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
-                            // in all other cases it should align to the right
-                            if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
-                                align = LatAlignmentDefinition::LEFT;
-                            }
+                        // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
+                        // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
+                        // in all other cases it should align to the right
+                        if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
+                            align = LatAlignmentDefinition::LEFT;
                         }
-
                         t.setPreferredLateralAlignment(align);
                         t.setMinGap(t.getMinGap() * myMinGapFactor);
+                        if (veh2->getVClass() == SVC_BICYCLE){
+                            if (veh2->getLane()->getWidth)
+                            if (veh2->getLane()->getlane
+                            if (veh2->getRightmostSublane() == 0)
+                            if (veh2->laneIndex
+                        }
 
                         const_cast<SUMOVTypeParameter&>(t.getParameter()).jmParameter[SUMO_ATTR_JM_STOPLINE_GAP] = toString(myMinGapFactor);
                         
@@ -307,9 +303,7 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
 
                         //other vehicle should not use the rescue lane so they should not make any lane changes
                         MSVehicle::Influencer& lanechange = veh2->getInfluencer();
-                        
                         lanechange.setLaneChangeMode(1536);
-                        
 
                         // disable strategic lane-changing
                         //veh2->getLaneChangeModel().setParameter(toString(SUMO_ATTR_LCA_STRATEGIC_PARAM), "-1");
