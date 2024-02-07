@@ -234,6 +234,19 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
 
                     t.setPreferredLateralAlignment(align);
 
+                    // bicycles which are in the rightmost sublane of their lane are slowed down to 5km/h (1,39m/s) shortly
+                    // we do this to allow bicycles in sublanes more to the left to get into the rightmost sublane
+                    if(t.getVehicleClass() == SVC_BICYCLE) {
+                        if(isInRightmostSublaneOfLane(*veh2)){
+                            std::vector<std::pair<SUMOTime, double> > speedTimeLine;
+                            speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep(), (*veh2).getSpeed()));
+                            speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep() + TIME2STEPS(2), 1.39));
+
+                            MSVehicle::Influencer& speedTimeLineAdjuster = (*veh2).getInfluencer();
+                            speedTimeLineAdjuster.setSpeedTimeLine(speedTimeLine);
+                        }
+                    }
+
                     #ifdef DEBUG_BLUELIGHT_RESCUELANE
                         std::cout << "Refresh alignment for vehicle: " << veh2->getID()
                                 << " laneIndex=" << veh2->getLane()->getIndex() << " numLanes=" << numLanes
@@ -296,6 +309,20 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                         }
 
                         t.setPreferredLateralAlignment(align);
+
+                        // bicycles which are in the rightmost sublane of their lane are slowed down to 5km/h (1,39m/s) shortly
+                        // we do this to allow bicycles in sublanes more to the left to get into the rightmost sublane
+                        if(t.getVehicleClass() == SVC_BICYCLE) {
+                            if(isInRightmostSublaneOfLane(*veh2)){
+                                std::vector<std::pair<SUMOTime, double> > speedTimeLine;
+                                speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep(), (*veh2).getSpeed()));
+                                speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep() + TIME2STEPS(2), 1.39));
+
+                                MSVehicle::Influencer& speedTimeLineAdjuster = (*veh2).getInfluencer();
+                                speedTimeLineAdjuster.setSpeedTimeLine(speedTimeLine);
+                            }
+                        }
+
                         t.setMinGap(t.getMinGap() * myMinGapFactor);
 
                         const_cast<SUMOVTypeParameter&>(t.getParameter()).jmParameter[SUMO_ATTR_JM_STOPLINE_GAP] = toString(myMinGapFactor);
@@ -414,6 +441,33 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
     }
 
     return true; // keep the device
+}
+
+bool
+MSDevice_Bluelight::isInRightmostSublaneOfLane(MSVehicle& veh2) const {
+    // this method is in parts the same as the one defined in GUIVehicle.cpp
+
+    // the distance from the rightmost part of the vehicle to the right side of the edge
+    const double rightSide = veh2.getRightSideOnEdge();
+
+    // the vector contains the right starting point in meters of each sublane of the whole edge
+    const std::vector<double>& sublaneSides = veh2.getLane()->getEdge().getSubLaneSides();
+    
+    // sublaneIndex is the index the rightmost part of our vehicle is in for the WHOLE edge
+    // if we never overwrite it in the for loop below, we are in the leftmost sublane of the whole edge, therefore the index must be sublaneSides.size() - 1
+    int sublaneIndex = (int)sublaneSides.size() - 1;
+
+    for (int i = 0; i < (int)sublaneSides.size(); ++i) {
+        // as soon as the sublaneSide is bigger than our rightSide position of the vehicle we know that our vehicles rightest part must be in the sublane one prior
+        if (sublaneSides[i] > rightSide) {
+            sublaneIndex = MAX2(i - 1, 0);
+            // we must now break out of the for loop
+            break;
+        }
+    }
+
+    // if our sublaneIndex is the same as the index of the righmost sublane of our lane, we know that the rightest part of our vehicle is in the rightmost sublane of the lane it is in, therefore we return true
+    return (sublaneIndex == veh2.getLane()->getRightmostSublane());
 }
 
 

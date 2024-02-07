@@ -145,6 +145,8 @@ private:
     /// @brief adjust vehicle when bluelight device gets activated/deactivated
     void activatedChanged();
 
+    /// @brief return if the vehicle is with its rightest part in the rightmost sublane of the lane it is on
+    bool isInRightmostSublaneOfLane(MSVehicle& veh2) const;
 
 private:
     // @brief collects all vehicleIDs which had to react to the emergency vehicle
