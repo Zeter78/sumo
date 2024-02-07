@@ -218,13 +218,17 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                     MSVehicleType& t = veh2->getSingularType();
                     // Setting the lateral alignment to build a rescue lane
                     LatAlignmentDefinition align = LatAlignmentDefinition::RIGHT;
-                    // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
-                    if(t.getVehicleClass() != SVC_BICYCLE) {
-                        // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
-                        // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
-                        // in all other cases it should align to the right
-                        if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
-                            align = LatAlignmentDefinition::LEFT;
+
+                    // if we only have one lane, vehicles should always move to the right
+                    if(numLanes != 1){
+                        // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
+                        if(t.getVehicleClass() != SVC_BICYCLE) {
+                            // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
+                            // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
+                            // in all other cases it should align to the right
+                            if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
+                                align = LatAlignmentDefinition::LEFT;
+                            }
                         }
                     }
 
@@ -278,13 +282,16 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                         // Setting the lateral alignment to build a rescue lane
                         LatAlignmentDefinition align = LatAlignmentDefinition::RIGHT;
 
-                        // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
-                        if(t.getVehicleClass() != SVC_BICYCLE) {
-                            // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
-                            // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
-                            // in all other cases it should align to the right
-                            if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
-                                align = LatAlignmentDefinition::LEFT;
+                        // if we only have one lane, vehicles should always move to the right
+                        if(numLanes != 1){
+                            // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
+                            if(t.getVehicleClass() != SVC_BICYCLE) {
+                                // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
+                                // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
+                                // in all other cases it should align to the right
+                                if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
+                                    align = LatAlignmentDefinition::LEFT;
+                                }
                             }
                         }
 
