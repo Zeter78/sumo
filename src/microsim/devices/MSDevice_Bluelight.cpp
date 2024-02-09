@@ -61,6 +61,8 @@ MSDevice_Bluelight::insertOptions(OptionsCont& oc) {
     oc.addDescription("device.bluelight.mingapfactor", "Bluelight Device", TL("Reduce the minGap for reacting vehicles by the given factor"));
     oc.doRegister("device.bluelight.activated", new Option_Bool(true));
     oc.addDescription("device.bluelight.activated", "Bluelight Device", TL("Boolean which decides if bluelight device is activated. Only when true the vehicle has special rights"));
+    oc.doRegister("device.bluelight.invertDirection", new Option_Bool(false));
+    oc.addDescription("device.bluelight.invertDirection", "Bluelight Device", TL("Boolean trigger, which forces driving direction to be inverted if set to true.  The boolean is automatically reset to false afterwards. Use case: forced change into opposite lane while overtaking via traci."));
 }
 
 
@@ -74,7 +76,8 @@ MSDevice_Bluelight::buildVehicleDevices(SUMOVehicle& v, std::vector<MSVehicleDev
             MSDevice_Bluelight* device = new MSDevice_Bluelight(v, "bluelight_" + v.getID(),
                     getFloatParam(v, oc, "bluelight.reactiondist", oc.getFloat("device.bluelight.reactiondist")),
                     getFloatParam(v, oc, "bluelight.mingapfactor", oc.getFloat("device.bluelight.mingapfactor")),
-                    getBoolParam(v, oc, "bluelight.activated", oc.getBool("device.bluelight.activated")));
+                    getBoolParam(v, oc, "bluelight.activated", oc.getBool("device.bluelight.activated")),
+                    getBoolParam(v, oc, "bluelight.invertDirection", oc.getBool("device.bluelight.invertDirection")));
             into.push_back(device);
         }
     }
@@ -85,11 +88,12 @@ MSDevice_Bluelight::buildVehicleDevices(SUMOVehicle& v, std::vector<MSVehicleDev
 // MSDevice_Bluelight-methods
 // ---------------------------------------------------------------------------
 MSDevice_Bluelight::MSDevice_Bluelight(SUMOVehicle& holder, const std::string& id,
-                                       const double reactionDist, const double minGapFactor, const bool activated) :
+                                       const double reactionDist, const double minGapFactor, const bool activated, const bool invertDirection) :
     MSVehicleDevice(holder, id),
     myReactionDist(reactionDist),
     myMinGapFactor(minGapFactor),
-    activated(activated) {
+    activated(activated),
+    invertDirection(invertDirection) {
         if (activated) {
             // if the initial value of activated is true we need to give the vehicle the special rights, that only need to be done ONCE and not on every move
             // if the initial value of activated is false we don't need to do anything, just keep the standard default values
@@ -603,6 +607,8 @@ MSDevice_Bluelight::getParameter(const std::string& key) const {
         return toString(myMinGapFactor);
     } else if (key == "activated"){
         return toString(activated);
+    } else if (key == "invertDirection"){
+        return toString(invertDirection);
     }
     throw InvalidArgument("Parameter '" + key + "' is not supported for device of type '" + deviceName() + "'");
 }
@@ -636,6 +642,19 @@ MSDevice_Bluelight::setParameter(const std::string& key, const std::string& valu
         activated = boolValue;
         // activated got changed --> adjust vehicle
         activatedChanged();
+    } else if (key == "invertDirection"){
+        bool boolValue;
+        try {
+            boolValue = StringUtils::toBool(value);
+        } catch (BoolFormatException&) {
+            throw InvalidArgument("Setting parameter '" + key + "' requires a bool for device of type '" + deviceName() + "'");
+        }
+        invertDirection = boolValue;
+        if (invertDirection){
+            MSVehicle& ego = dynamic_cast<MSVehicle&>(this->getHolder());
+            ego.getLaneChangeModel().changedToOpposite();
+            invertDirection = false;
+        }
     } else {
         throw InvalidArgument("Setting parameter '" + key + "' is not supported for device of type '" + deviceName() + "'");
     }

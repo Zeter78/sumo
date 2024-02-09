@@ -137,7 +137,7 @@ private:
      * @param[in] holder The vehicle that holds this device
      * @param[in] id The ID of the device
      */
-    MSDevice_Bluelight(SUMOVehicle& holder, const std::string& id, const double reactionDist, const double minGapFactor, const bool activated);
+    MSDevice_Bluelight(SUMOVehicle& holder, const std::string& id, const double reactionDist, const double minGapFactor, const bool activated, const bool invertDirection);
 
     /// @brief restore type of influenced vehicle
     void resetVehicle(MSVehicle* veh2, const std::string& targetTypeID);
@@ -163,6 +163,9 @@ private:
 
     /// @brief if the bluelight device is activated (only when activated the vehicle has special rights)
     bool activated;
+
+    /// @brief if set to true, driving direction gets inverted (automatically reset to false afterwards) (use case: forced change into opposite lane while overtaking via traci)
+    bool invertDirection;
 
 private:
     /// @brief Invalidated copy constructor.
