@@ -226,21 +226,21 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                     // if we only have one lane, vehicles should always move to the right
                     if(numLanes != 1){
                         // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
-                        if(t.getVehicleClass() != SVC_BICYCLE) {
+                        //if(t.getVehicleClass() != SVC_BICYCLE) {
                             // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
                             // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
                             // in all other cases it should align to the right
                             if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
                                 align = LatAlignmentDefinition::LEFT;
                             }
-                        }
+                        //}
                     }
 
                     t.setPreferredLateralAlignment(align);
 
                     // bicycles which are in the rightmost sublane of their lane are slowed down to 5km/h (1,39m/s) shortly
                     // we do this to allow bicycles in sublanes more to the left to get into the rightmost sublane
-                    if(t.getVehicleClass() == SVC_BICYCLE) {
+/*                     if(t.getVehicleClass() == SVC_BICYCLE) {
                         if(isInRightmostSublaneOfLane(*veh2)){
                             std::vector<std::pair<SUMOTime, double> > speedTimeLine;
                             speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep(), (*veh2).getSpeed()));
@@ -249,7 +249,7 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                             MSVehicle::Influencer& speedTimeLineAdjuster = (*veh2).getInfluencer();
                             speedTimeLineAdjuster.setSpeedTimeLine(speedTimeLine);
                         }
-                    }
+                    } */
 
                     #ifdef DEBUG_BLUELIGHT_RESCUELANE
                         std::cout << "Refresh alignment for vehicle: " << veh2->getID()
@@ -302,21 +302,21 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                         // if we only have one lane, vehicles should always move to the right
                         if(numLanes != 1){
                             // bicycles should ALWAYS change to the right sublane, while all other vehicles change according to their position and the position of the emergency vehicle
-                            if(t.getVehicleClass() != SVC_BICYCLE) {
+                            //if(t.getVehicleClass() != SVC_BICYCLE) {
                                 // if veh2 is in the leftmost lane (index == numLanes - 1) OR the index of veh2 is greater than the index of the emergency vehicle 
                                 // (= veh2 is to the left of the emergency vehicle), then veh2 must align to the left
                                 // in all other cases it should align to the right
                                 if (veh2->getLane()->getIndex() == numLanes - 1 || veh2->getLane()->getIndex() > ego.getLane()->getIndex()) {
                                     align = LatAlignmentDefinition::LEFT;
                                 }
-                            }
+                            //}
                         }
 
                         t.setPreferredLateralAlignment(align);
 
                         // bicycles which are in the rightmost sublane of their lane are slowed down to 5km/h (1,39m/s) shortly
                         // we do this to allow bicycles in sublanes more to the left to get into the rightmost sublane
-                        if(t.getVehicleClass() == SVC_BICYCLE) {
+/*                         if(t.getVehicleClass() == SVC_BICYCLE) {
                             if(isInRightmostSublaneOfLane(*veh2)){
                                 std::vector<std::pair<SUMOTime, double> > speedTimeLine;
                                 speedTimeLine.push_back(std::make_pair(MSNet::getInstance()->getCurrentTimeStep(), (*veh2).getSpeed()));
@@ -325,7 +325,7 @@ MSDevice_Bluelight::notifyMove(SUMOTrafficObject& veh, double /* oldPos */,
                                 MSVehicle::Influencer& speedTimeLineAdjuster = (*veh2).getInfluencer();
                                 speedTimeLineAdjuster.setSpeedTimeLine(speedTimeLine);
                             }
-                        }
+                        } */
 
                         t.setMinGap(t.getMinGap() * myMinGapFactor);
 
